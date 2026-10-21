@@ -50,7 +50,7 @@ Strava’s create-app form needs two different values:
 
 | Field | What to enter (local web) |
 |---|---|
-| **Website** | This GitHub repo URL (or any public site you control) |
+| **Website** | `https://github.com/sanfordliu/paddleerg` |
 | **Authorization Callback Domain** | `localhost` only — no `http://`, port, or path |
 
 The **full** redirect URI used by the app (not the form’s domain field) is:
