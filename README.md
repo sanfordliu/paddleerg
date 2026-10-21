@@ -2,113 +2,105 @@
 
 Companion app for the **Whipr** paddle erg. Connect over Bluetooth (FTMS), watch live metrics on a customizable tile board, save a session, and upload it to **Strava**.
 
-**Primary target today:** Mac **Chrome** / **Edge** via [Web Bluetooth](https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API).  
-**Later:** iOS / Android with Expo development builds and `react-native-ble-plx`.
+Monorepo:
+
+| Package | Role |
+|---|---|
+| [`client/`](client/) | Expo / React Native app (web today; iOS/Android later) |
+| [`server/`](server/) | Strava OAuth + secrets (Express locally; Lambda-ready handler) |
+
+**Primary client target today:** Mac **Chrome** / **Edge** via [Web Bluetooth](https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API).
 
 ## What works now
 
-- Scan and connect to an FTMS fitness machine (Web Bluetooth)
-- Live metric tiles (time, distance, SPM, pace, strokes, power, …)
-- Edit mode: drag to reorder, add, or remove tiles
-- Start / stop session recording and local “share workout” strip
-- Strava OAuth (via local token proxy) and TCX upload when credentials are configured
-- Settings: Bluetooth disconnect, Strava connect/disconnect, sport type, layout reset, debug packets
+- Scan / connect to an FTMS machine; auto-reconnect when the Whipr comes back online
+- Live metric tiles (reorder, add, remove)
+- Start / stop session recording and share-to-Strava (TCX built on the client)
+- Server-owned Strava OAuth (authorize → callback → one-time session handoff → refresh)
 
 ## What’s still left to do
 
-- Register a Strava API application and fill in `.env` / `server/.env` (see below)
-- Harden FTMS parsing against more Whipr firmware variants as needed
-- Native BLE path (replace stub) + Expo development builds for iPhone / Android
-- Production Strava callback (HTTPS domain + hosted token proxy), not only `localhost`
-- Polish UX (empty states, stronger upload feedback, optional activity naming)
-- Automated tests beyond the FTMS unit script
+- Deploy `server` to AWS Lambda + API Gateway; secrets in Secrets Manager
+- Durable OAuth sessions for multi-instance Lambda (today: in-memory)
+- Native BLE + Expo development builds for iPhone / Android
+- Production Strava callback domain (not `localhost`)
+- Full-viewport responsive metric board polish
 
-## Quick start (Mac Chrome)
+## Quick start
 
 ```bash
+git clone https://github.com/sanfordliu/paddleerg.git
+cd paddleerg
 npm install
-npm run web
-```
-
-Open the URL Expo prints (usually `http://localhost:8081`). Use **Chrome** or **Edge**.
-
-1. Power on your Whipr.
-2. Tap **Connect** → pick your machine in the browser chooser.
-3. Start paddling; tiles should update.
-4. Pencil icon: reorder / add / remove metrics.
-5. Gear icon: Settings (Strava, sport type, disconnect, debug).
-
-App + Strava proxy together:
-
-```bash
+cp client/.env.example client/.env
+cp server/.env.example server/.env
+# Edit server/.env: set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET
 npm run dev
 ```
 
-## Strava API app (Website + callback)
+Then open **http://localhost:8081** (Chrome or Edge).
 
-Strava’s create-app form needs two different values:
+| Service | URL |
+|---|---|
+| Client | http://localhost:8081 |
+| Server health | http://localhost:8787/health |
 
-| Field | What to enter (local web) |
+`npm run web` / `npm run server` start each package alone.
+
+## Strava setup
+
+| Strava form field | Local value |
 |---|---|
 | **Website** | `https://github.com/sanfordliu/paddleerg` |
-| **Authorization Callback Domain** | `localhost` only — no `http://`, port, or path |
+| **Authorization Callback Domain** | `localhost` |
 
-The **full** redirect URI used by the app (not the form’s domain field) is:
+OAuth redirect URI (server, not the Expo app):
 
-`http://localhost:8081/strava-callback`
+`http://localhost:8787/strava/callback`
 
-After create, copy **Client ID** and **Client Secret** into env files (below). Never commit the secret.
-
-## Environment files
-
-Templates:
-
-- [`.env.example`](.env.example) → copy to **`.env`** (gitignored)
-- [`server/.env.example`](server/.env.example) → copy to **`server/.env`** (gitignored)
-
-A blank `.env` / `server/.env` may already exist locally for you to edit. Fill:
+**Secrets stay on the server only:**
 
 ```bash
-# .env (public client id only)
-EXPO_PUBLIC_STRAVA_CLIENT_ID=
-EXPO_PUBLIC_STRAVA_REDIRECT_URI=http://localhost:8081/strava-callback
-EXPO_PUBLIC_STRAVA_PROXY_URL=http://localhost:8787
-
-# server/.env (secret stays on the proxy)
+# server/.env
 STRAVA_CLIENT_ID=
 STRAVA_CLIENT_SECRET=
-STRAVA_REDIRECT_URI=http://localhost:8081/strava-callback
-STRAVA_PROXY_PORT=8787
+STRAVA_REDIRECT_URI=http://localhost:8787/strava/callback
+CLIENT_RETURN_URL=http://localhost:8081
+CORS_ORIGINS=http://localhost:8081
+PORT=8787
 ```
-
-Then:
 
 ```bash
-npm run strava-proxy   # or npm run dev
+# client/.env
+EXPO_PUBLIC_API_URL=http://localhost:8787
 ```
 
-In the app: **Connect Strava** → authorize → save a workout → **Upload to Strava**.
+### Connect flow
 
-## Project layout
-
-- `app/` — Expo Router screens (workout, settings, Strava callback)
-- `src/ble/` — Web Bluetooth adapter, FTMS parser, native stub
-- `src/components/` — UI (tiles, connect, share, notices)
-- `src/store/` — workout, layout, Strava state (Zustand)
-- `src/strava/` — TCX builder + upload helpers
-- `src/theme.ts` — React Native Paper MD3 dark theme
-- `server/` — OAuth token proxy (holds client secret)
-- `docs/ble-protocol.md` — protocol notes
+1. App opens `GET {API}/strava/authorize`
+2. Strava redirects to `GET {API}/strava/callback`
+3. Server exchanges the code (with client secret) and stores tokens under a one-time `sid`
+4. Browser returns to `{CLIENT_RETURN_URL}/strava-callback?sid=…`
+5. App calls `GET {API}/strava/session/:sid` once and saves athlete tokens locally
+6. Uploads go **client → Strava**; token refresh goes through the server
 
 ## Scripts
 
 | Command | Purpose |
 |---|---|
-| `npm run web` | Expo web |
-| `npm run strava-proxy` | Local token proxy on `:8787` |
-| `npm run dev` | Web + proxy |
+| `npm run dev` | Client web + server |
+| `npm run web` | Client only (`:8081`) |
+| `npm run server` | Server only (`:8787`) |
+| `npm run lint` | Client lint |
+| `npm run typecheck` | Client + server |
 | `npm run test:ftms` | FTMS parser checks |
-| `npm run lint` | ESLint |
+
+## Layout
+
+```text
+client/   Expo Router, BLE, UI, TCX builder
+server/   Express API (src/app.ts) + Lambda entry (src/lambda.ts)
+```
 
 ## License
 

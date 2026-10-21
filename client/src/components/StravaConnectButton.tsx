@@ -2,7 +2,7 @@ import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { Button } from 'react-native-paper';
 import { Notice } from '@/src/components/Notice';
-import { STRAVA_CLIENT_ID } from '@/src/strava/config';
+import { API_URL } from '@/src/strava/config';
 import { useStravaStore } from '@/src/store/stravaStore';
 import { accents, space } from '@/src/theme';
 
@@ -16,7 +16,7 @@ export function StravaConnectButton() {
   const status = useStravaStore((s) => s.status);
   const clearStatus = useStravaStore((s) => s.clearStatus);
   const setStatus = useStravaStore((s) => s.setStatus);
-  const missingClientId = !STRAVA_CLIENT_ID;
+  const missingApi = !API_URL;
 
   const onPress = () => {
     try {
@@ -34,14 +34,14 @@ export function StravaConnectButton() {
         mode="contained"
         buttonColor={accents.strava}
         icon={({ size, color }) => <FontAwesome5 name="strava" size={size} color={color} />}
-        disabled={missingClientId}
+        disabled={missingApi}
         onPress={onPress}>
         Connect Strava
       </Button>
-      {missingClientId ? (
+      {missingApi ? (
         <Notice
           tone="error"
-          message="Missing Strava client ID. Add EXPO_PUBLIC_STRAVA_CLIENT_ID to .env and restart the app."
+          message="Missing API URL. Add EXPO_PUBLIC_API_URL to client/.env and restart the app."
         />
       ) : null}
       {status ? (

@@ -1,4 +1,4 @@
-import { STRAVA_PROXY_URL } from './config';
+import { API_URL } from './config';
 
 export interface StravaTokens {
   access_token: string;
@@ -7,21 +7,18 @@ export interface StravaTokens {
   athlete?: { id: number; firstname?: string; lastname?: string };
 }
 
-export async function exchangeCode(code: string): Promise<StravaTokens> {
-  const res = await fetch(`${STRAVA_PROXY_URL}/strava/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ grant_type: 'authorization_code', code }),
-  });
+/** Redeem a one-time OAuth handoff sid from the server callback. */
+export async function redeemSession(sid: string): Promise<StravaTokens> {
+  const res = await fetch(`${API_URL}/strava/session/${encodeURIComponent(sid)}`);
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Token exchange failed: ${res.status} ${text}`);
+    throw new Error(`Session redeem failed: ${res.status} ${text}`);
   }
   return res.json();
 }
 
 export async function refreshTokens(refreshToken: string): Promise<StravaTokens> {
-  const res = await fetch(`${STRAVA_PROXY_URL}/strava/token`, {
+  const res = await fetch(`${API_URL}/strava/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

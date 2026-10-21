@@ -47,6 +47,7 @@ export default function SettingsScreen() {
   const clearError = useWorkoutStore((s) => s.clearError);
   const disconnect = useWorkoutStore((s) => s.disconnect);
   const connected = connection === 'connected';
+  const reconnecting = connection === 'reconnecting';
 
   useEffect(() => {
     void hydrate();
@@ -69,16 +70,21 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <SectionTitle>Bluetooth</SectionTitle>
         <List.Item
-          title={connected ? `Connected to ${device?.name || 'device'}` : 'Not connected'}
+          title={
+            connected
+              ? `Connected to ${device?.name || 'device'}`
+              : reconnecting
+                ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
+                : 'Not connected'
+          }
         />
         <View style={styles.actions}>
-          {connected ? (
+          {connected || reconnecting ? (
             <Button mode="outlined" textColor={theme.colors.error} onPress={() => void disconnect()}>
               Disconnect
             </Button>
-          ) : (
-            <ConnectButton />
-          )}
+          ) : null}
+          {!connected ? <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} /> : null}
           {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
         </View>
 

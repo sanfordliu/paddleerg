@@ -41,6 +41,8 @@ interface WorkoutState {
   lastSavedSummary: WorkoutSummary | null;
 
   chooseFtmsDevice: () => Promise<void>;
+  /** After page load or drop: keep trying the last permitted Whipr. */
+  beginAutoReconnect: () => void;
   disconnect: () => Promise<void>;
   startWorkout: () => void;
   stopWorkout: () => void;
@@ -72,21 +74,50 @@ function finishActiveWorkout(get: Get): Partial<WorkoutState> {
   };
 }
 
+function beginAutoReconnectInternal(set: Set, get: Get) {
+  const adapter = getBleAdapter();
+  if (!adapter.hasRememberedDevice()) return;
+
+  const remembered = adapter.getRememberedDeviceInfo();
+  set({
+    connection: 'reconnecting',
+    device: remembered ?? get().device,
+    error: null,
+  });
+
+  adapter.startAutoReconnect((device) => {
+    void afterConnected(set, get, device).catch((e) => {
+      const message = e instanceof Error ? e.message : String(e);
+      set({
+        connection: 'reconnecting',
+        error: message,
+        device: adapter.getRememberedDeviceInfo() ?? device,
+      });
+      // Keep hunting if setup failed transiently.
+      beginAutoReconnectInternal(set, get);
+    });
+  });
+}
+
 function onConnectionLost(set: Set, get: Get) {
   clearConnectionHandler();
   const state = get();
   if (state.connection === 'disconnected' && !state.device) return;
+
+  const remembered = getBleAdapter().getRememberedDeviceInfo() ?? state.device;
   set({
-    connection: 'disconnected',
-    device: null,
-    error: 'Paddle ERG disconnected. Choose the device again to reconnect.',
+    connection: 'reconnecting',
+    device: remembered,
+    error: null,
     gattServices: [],
     ...finishActiveWorkout(get),
   });
+  beginAutoReconnectInternal(set, get);
 }
 
 async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
   const adapter = getBleAdapter();
+  adapter.stopAutoReconnect();
   set({ connection: 'connecting', error: null, device });
 
   let services: GattServiceInfo[] = [];
@@ -145,6 +176,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   async chooseFtmsDevice() {
     const adapter = getBleAdapter();
+    adapter.stopAutoReconnect();
     if (!adapter.isAvailable()) {
       set({
         error:
@@ -153,16 +185,36 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       return;
     }
     try {
+      set({ connection: 'connecting', error: null });
       const device = await adapter.requestFtmsDevice();
       await afterConnected(set, get, device);
     } catch (e) {
       clearConnectionHandler();
-      set({ connection: 'disconnected', error: mapConnectError(e), device: null });
+      const remembered = adapter.getRememberedDeviceInfo();
+      if (remembered) {
+        set({
+          connection: 'reconnecting',
+          error: mapConnectError(e),
+          device: remembered,
+        });
+        beginAutoReconnectInternal(set, get);
+      } else {
+        set({ connection: 'disconnected', error: mapConnectError(e), device: null });
+      }
     }
+  },
+
+  beginAutoReconnect() {
+    const { connection } = get();
+    if (connection === 'connected' || connection === 'connecting' || connection === 'reconnecting') {
+      return;
+    }
+    beginAutoReconnectInternal(set, get);
   },
 
   async disconnect() {
     clearConnectionHandler();
+    getBleAdapter().stopAutoReconnect();
     try {
       await getBleAdapter().disconnect();
     } catch {}

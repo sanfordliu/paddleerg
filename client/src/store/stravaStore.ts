@@ -2,14 +2,14 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 import {
-  exchangeCode,
   pollUpload,
+  redeemSession,
   refreshTokens,
   uploadActivity,
   type StravaTokens,
 } from '@/src/strava/api';
 import {
-  STRAVA_CLIENT_ID,
+  API_URL,
   STRAVA_SPORT_OPTIONS,
   stravaAuthorizeUrl,
   type StravaSportType,
@@ -51,7 +51,7 @@ interface StravaState {
   hydrate: () => Promise<void>;
   setSportType: (sport: StravaSportType) => void;
   beginOAuth: () => string;
-  handleAuthCode: (code: string, state?: string) => Promise<void>;
+  completeOAuthSession: (sid: string) => Promise<void>;
   logout: () => Promise<void>;
   clearStatus: () => void;
   setStatus: (status: string | null) => void;
@@ -93,27 +93,18 @@ export const useStravaStore = create<StravaState>((set, get) => ({
   },
 
   beginOAuth() {
-    if (!STRAVA_CLIENT_ID) {
-      throw new Error(
-        'Missing EXPO_PUBLIC_STRAVA_CLIENT_ID. Create a Strava API app and set env vars.'
-      );
+    if (!API_URL) {
+      throw new Error('Missing EXPO_PUBLIC_API_URL. Point the client at the paddleerg server.');
     }
     const state = Math.random().toString(36).slice(2);
     if (Platform.OS === 'web') sessionStorage.setItem(STATE_KEY, state);
     return stravaAuthorizeUrl(state);
   },
 
-  async handleAuthCode(code, state) {
+  async completeOAuthSession(sid) {
     try {
-      if (Platform.OS === 'web' && state) {
-        const expected = sessionStorage.getItem(STATE_KEY);
-        sessionStorage.removeItem(STATE_KEY);
-        if (expected && expected !== state) {
-          throw new Error('Strava OAuth state mismatch. Try connecting again.');
-        }
-      }
-      set({ status: 'Exchanging authorization code…' });
-      const tokens = await exchangeCode(code);
+      set({ status: 'Finishing Strava connection…' });
+      const tokens = await redeemSession(sid);
       await saveTokens(tokens);
       set({ tokens, status: 'Connected to Strava' });
     } catch (e) {

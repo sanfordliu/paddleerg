@@ -30,13 +30,19 @@ export default function WorkoutScreen() {
   const setEditing = useLayoutStore((s) => s.setEditing);
 
   const hydrate = useStravaStore((s) => s.hydrate);
+  const beginAutoReconnect = useWorkoutStore((s) => s.beginAutoReconnect);
 
   const connected = connection === 'connected';
+  const reconnecting = connection === 'reconnecting';
   const maxWidth = Math.min(width, 820);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    beginAutoReconnect();
+  }, [beginAutoReconnect]);
 
   return (
     <SafeAreaView
@@ -59,13 +65,14 @@ export default function WorkoutScreen() {
                   paddleerg
                 </Text>
               </View>
-              {connected ? (
+              {connected || reconnecting ? (
                 <Text
                   variant="bodySmall"
                   style={{ color: theme.colors.onSurfaceVariant }}
                   numberOfLines={1}>
-                  {device?.name || 'Connected'}
-                  {phase === 'active' ? ' · LIVE' : ''}
+                  {reconnecting
+                    ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
+                    : `${device?.name || 'Connected'}${phase === 'active' ? ' · LIVE' : ''}`}
                 </Text>
               ) : null}
             </View>
@@ -111,7 +118,7 @@ export default function WorkoutScreen() {
 
           {!connected ? (
             <View style={styles.connectRow}>
-              <ConnectButton label="Connect" />
+              <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} />
             </View>
           ) : null}
 

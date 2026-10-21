@@ -6,8 +6,8 @@ import { useStravaStore } from '@/src/store/stravaStore';
 import { accents } from '@/src/theme';
 
 export default function StravaCallbackScreen() {
-  const params = useLocalSearchParams<{ code?: string; error?: string; state?: string }>();
-  const handleAuthCode = useStravaStore((s) => s.handleAuthCode);
+  const params = useLocalSearchParams<{ sid?: string; error?: string; state?: string }>();
+  const completeOAuthSession = useStravaStore((s) => s.completeOAuthSession);
   const setStatus = useStravaStore((s) => s.setStatus);
   const router = useRouter();
   const [message, setMessage] = useState('Finishing Strava connection…');
@@ -23,15 +23,15 @@ export default function StravaCallbackScreen() {
         setDone(true);
         return;
       }
-      if (!params.code) {
-        const msg = 'No authorization code received.';
+      if (!params.sid) {
+        const msg = 'No session id received from server.';
         setStatus(msg);
         setMessage(msg);
         setDone(true);
         return;
       }
       try {
-        await handleAuthCode(String(params.code), params.state ? String(params.state) : undefined);
+        await completeOAuthSession(String(params.sid));
         if (!cancelled) {
           setMessage('Connected to Strava.');
           setDone(true);
@@ -49,7 +49,7 @@ export default function StravaCallbackScreen() {
     return () => {
       cancelled = true;
     };
-  }, [params.code, params.error, params.state, handleAuthCode, setStatus, router]);
+  }, [params.sid, params.error, completeOAuthSession, setStatus, router]);
 
   return (
     <View style={styles.wrap}>

@@ -9,6 +9,11 @@ export function createNativeBleAdapter(): BleAdapter {
   return {
     isAvailable: () => false,
     requestFtmsDevice: async () => unavailable(),
+    reconnectRememberedDevice: async () => null,
+    startAutoReconnect: () => {},
+    stopAutoReconnect: () => {},
+    hasRememberedDevice: () => false,
+    getRememberedDeviceInfo: () => null,
     disconnect: async () => {},
     discover: async () => unavailable(),
     startNotifications: async () => unavailable(),

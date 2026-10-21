@@ -78,14 +78,31 @@ export function DebugSection() {
       </Text>
 
       <List.Item
-        title={connected ? 'Connected' : connection === 'connecting' ? 'Connecting…' : 'Not connected'}
+        title={
+          connected
+            ? 'Connected'
+            : connection === 'connecting'
+              ? 'Connecting…'
+              : connection === 'reconnecting'
+                ? 'Reconnecting…'
+                : 'Not connected'
+        }
         description={
           device
             ? `${device.name || 'Unnamed device'} · ${device.id.slice(0, 8)}…`
             : 'No device selected'
         }
         left={(props) => (
-          <List.Icon {...props} icon={connected ? 'bluetooth-connect' : 'bluetooth-off'} />
+          <List.Icon
+            {...props}
+            icon={
+              connected
+                ? 'bluetooth-connect'
+                : connection === 'reconnecting'
+                  ? 'bluetooth-transfer'
+                  : 'bluetooth-off'
+            }
+          />
         )}
       />
 

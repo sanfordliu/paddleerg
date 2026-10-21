@@ -9,14 +9,14 @@ interface Props {
 export function ConnectButton({ label = 'Connect' }: Props) {
   const connection = useWorkoutStore((s) => s.connection);
   const chooseFtmsDevice = useWorkoutStore((s) => s.chooseFtmsDevice);
-  const connecting = connection === 'connecting';
-  const disabled = !isWebBluetoothSupported() || connecting;
+  const busy = connection === 'connecting';
+  const disabled = !isWebBluetoothSupported() || busy;
 
   return (
     <Button
       mode="contained"
       icon="bluetooth"
-      loading={connecting}
+      loading={busy}
       disabled={disabled}
       onPress={() => {
         void chooseFtmsDevice();
