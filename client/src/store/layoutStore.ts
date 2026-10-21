@@ -10,6 +10,9 @@ interface LayoutState {
   editing: boolean;
   setEditing: (editing: boolean) => void;
   reorder: (from: number, to: number) => void;
+  reorderById: (fromId: MetricId, toId: MetricId) => void;
+  /** Swap two tiles by id (grid drag-onto-tile). */
+  swapById: (a: MetricId, b: MetricId) => void;
   removeTile: (id: MetricId) => void;
   addTile: (id: MetricId) => void;
   resetLayout: () => void;
@@ -30,6 +33,26 @@ export const useLayoutStore = create<LayoutState>()(
         if (from < 0 || to < 0 || from >= next.length || to >= next.length) return;
         const [item] = next.splice(from, 1);
         next.splice(to, 0, item);
+        set({ tileIds: next });
+      },
+      reorderById: (fromId, toId) => {
+        if (fromId === toId) return;
+        const next = [...get().tileIds];
+        const from = next.indexOf(fromId);
+        const to = next.indexOf(toId);
+        if (from < 0 || to < 0) return;
+        const [item] = next.splice(from, 1);
+        next.splice(to, 0, item);
+        set({ tileIds: next });
+      },
+      swapById: (a, b) => {
+        if (a === b) return;
+        const next = [...get().tileIds];
+        const i = next.indexOf(a);
+        const j = next.indexOf(b);
+        if (i < 0 || j < 0) return;
+        next[i] = b;
+        next[j] = a;
         set({ tileIds: next });
       },
       removeTile: (id) => set({ tileIds: get().tileIds.filter((t) => t !== id) }),

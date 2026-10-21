@@ -1,4 +1,5 @@
-import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useState } from 'react';
+import { LayoutChangeEvent, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Icon, IconButton, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import type { MetricDef } from '@/src/metrics/catalog';
 import type { LiveMetrics } from '@/src/ble/types';
@@ -7,154 +8,217 @@ interface Props {
   def: MetricDef;
   metrics: LiveMetrics;
   editing: boolean;
+  dragging?: boolean;
+  dropTarget?: boolean;
+  controlSize?: number;
   onLongPress?: () => void;
   onDelete?: () => void;
-  onDragStart?: () => void;
-  onDragOver?: () => void;
-  onDrop?: () => void;
-  dragging?: boolean;
+  /** Web pointer-drag: begin reorder from this tile (not the delete control). */
+  onDragPointerDown?: (e: { clientX: number; clientY: number; pointerId: number }) => void;
 }
 
-/** Scale fonts from viewport so tall tiles get large numbers. */
-function tileTypeScale(width: number, height: number) {
-  // Approximate cell size for a 2×3 (portrait) or 3×2 (landscape) board.
+function chromeTypeScale(width: number, height: number) {
   const cols = width < height ? 2 : width < 900 ? 2 : 3;
   const rows = Math.ceil(6 / cols);
-  const cellW = width / cols;
   const cellH = (height - 100) / rows;
-  const value = Math.round(Math.min(120, Math.max(36, Math.min(cellW * 0.28, cellH * 0.32))));
-  const label = Math.round(Math.min(28, Math.max(14, value * 0.28)));
-  const unit = Math.round(Math.min(24, Math.max(13, value * 0.22)));
-  return { value, label, unit };
+  const label = Math.round(Math.min(42, Math.max(20, cellH * 0.09)));
+  const unit = Math.round(Math.min(36, Math.max(18, cellH * 0.075)));
+  const control = Math.round(Math.min(56, Math.max(32, cellH * 0.12)));
+  return { label, unit, control };
+}
+
+let measureCanvas: HTMLCanvasElement | null = null;
+
+function measureTextWidth(text: string, fontSize: number): number {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    if (!measureCanvas) measureCanvas = document.createElement('canvas');
+    const ctx = measureCanvas.getContext('2d');
+    if (ctx) {
+      ctx.font = `700 ${fontSize}px ui-sans-serif, system-ui, -apple-system, sans-serif`;
+      return ctx.measureText(text).width;
+    }
+  }
+  return text.length * fontSize * 0.62;
+}
+
+function fitFontSize(text: string, boxW: number, boxH: number): number {
+  if (boxW <= 0 || boxH <= 0 || !text) return 24;
+  const maxByHeight = boxH * 0.8;
+  const maxByWidthGuess = boxW * 0.98;
+  let hi = Math.min(maxByHeight, maxByWidthGuess, 400);
+  let lo = 12;
+  if (measureTextWidth(text, hi) <= boxW * 0.98) {
+    return Math.max(12, Math.floor(hi));
+  }
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    if (measureTextWidth(text, mid) <= boxW * 0.98) lo = mid;
+    else hi = mid;
+  }
+  return Math.max(12, Math.floor(lo));
 }
 
 export function MetricTile({
   def,
   metrics,
   editing,
+  dragging,
+  dropTarget,
+  controlSize: controlSizeProp,
   onLongPress,
   onDelete,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  dragging,
+  onDragPointerDown,
 }: Props) {
   const theme = useTheme();
   const { width, height } = useWindowDimensions();
   const display = def.format(def.getValue(metrics));
-  const scale = tileTypeScale(width, height);
+  const chrome = chromeTypeScale(width, height);
+  const controlSize = controlSizeProp ?? chrome.control;
+  const [valueBox, setValueBox] = useState({ width: 0, height: 0 });
+  const valueFont = fitFontSize(display, valueBox.width, valueBox.height);
+
+  const onValueLayout = (e: LayoutChangeEvent) => {
+    const { width: w, height: h } = e.nativeEvent.layout;
+    if (Math.abs(w - valueBox.width) > 1 || Math.abs(h - valueBox.height) > 1) {
+      setValueBox({ width: w, height: h });
+    }
+  };
+
+  const borderColor = dropTarget
+    ? theme.colors.secondary
+    : editing
+      ? theme.colors.secondary
+      : theme.colors.outlineVariant;
+
+  const tileBody = (
+    <Surface
+      style={[
+        styles.tile,
+        editing && styles.tileEditing,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor,
+          borderStyle: editing ? 'dashed' : 'solid',
+          borderWidth: dropTarget ? 2 : 1,
+          paddingTop: editing ? controlSize + 12 : 16,
+        },
+      ]}
+      elevation={1}
+      mode="flat">
+      {editing ? (
+        <View
+          style={[styles.dragHandle, { top: 10, left: 10 }]}
+          pointerEvents="none"
+          accessibilityLabel="Drag handle">
+          <Icon source="drag" size={Math.round(controlSize * 0.7)} color={theme.colors.onSurface} />
+        </View>
+      ) : null}
+      {editing && onDelete ? (
+        <View
+          {...(Platform.OS === 'web' ? ({ 'data-tile-delete': '1' } as object) : null)}
+          style={styles.deleteWrap}>
+          <IconButton
+            icon="minus"
+            size={Math.round(controlSize * 0.45)}
+            mode="contained"
+            containerColor={theme.colors.error}
+            iconColor={theme.colors.onError}
+            style={[
+              styles.deleteBadge,
+              {
+                width: controlSize,
+                height: controlSize,
+                borderRadius: controlSize / 2,
+              },
+            ]}
+            accessibilityLabel={`Remove ${def.label}`}
+            onPress={onDelete}
+          />
+        </View>
+      ) : null}
+
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.label,
+          {
+            color: theme.colors.onSurfaceVariant,
+            fontSize: chrome.label,
+            lineHeight: Math.round(chrome.label * 1.2),
+          },
+        ]}>
+        {def.label}
+      </Text>
+
+      <View style={styles.valueWrap} onLayout={onValueLayout}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.value,
+            {
+              color: theme.colors.onSurface,
+              fontSize: valueFont,
+              lineHeight: Math.round(valueFont * 1.05),
+            },
+          ]}>
+          {display}
+        </Text>
+      </View>
+
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.unit,
+          {
+            color: theme.colors.onSurface,
+            fontSize: chrome.unit,
+            lineHeight: Math.round(chrome.unit * 1.2),
+            opacity: def.unit ? 1 : 0,
+          },
+        ]}>
+        {def.unit || ' '}
+      </Text>
+    </Surface>
+  );
+
+  if (editing) {
+    return (
+      <View
+        style={[styles.pressable, styles.noSelect, styles.grab, dragging && styles.dragging]}
+        accessibilityHint="Drag to reorder"
+        {...(Platform.OS === 'web' && onDragPointerDown
+          ? ({
+              onPointerDown: (e: {
+                button?: number;
+                clientX: number;
+                clientY: number;
+                pointerId: number;
+                preventDefault?: () => void;
+                target?: { closest?: (s: string) => unknown };
+              }) => {
+                if (e.button != null && e.button !== 0) return;
+                const t = e.target as { closest?: (s: string) => unknown } | undefined;
+                if (t?.closest?.('button,[data-tile-delete]')) return;
+                e.preventDefault?.();
+                onDragPointerDown({
+                  clientX: e.clientX,
+                  clientY: e.clientY,
+                  pointerId: e.pointerId,
+                });
+              },
+            } as object)
+          : {})}>
+        {tileBody}
+      </View>
+    );
+  }
 
   return (
     <TouchableRipple
       onLongPress={onLongPress}
       delayLongPress={350}
-      style={[
-        styles.pressable,
-        dragging && styles.dragging,
-        Platform.OS === 'web' && editing ? styles.draggable : null,
-      ]}
-      accessibilityHint={editing ? 'Drag to reorder' : undefined}
-      {...(Platform.OS === 'web' && editing
-        ? ({
-            draggable: true,
-            onDragStart: (e: {
-              dataTransfer?: {
-                setData?: (t: string, v: string) => void;
-                effectAllowed?: string;
-              };
-            }) => {
-              e.dataTransfer?.setData?.('text/plain', def.id);
-              if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-              onDragStart?.();
-            },
-            onDragOver: (e: {
-              preventDefault?: () => void;
-              dataTransfer?: { dropEffect?: string };
-            }) => {
-              e.preventDefault?.();
-              if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-              onDragOver?.();
-            },
-            onDrop: (e: { preventDefault?: () => void }) => {
-              e.preventDefault?.();
-              onDrop?.();
-            },
-            onDragEnd: () => onDrop?.(),
-          } as object)
-        : {})}>
-      <Surface
-        style={[
-          styles.tile,
-          editing && styles.tileEditing,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: editing ? theme.colors.secondary : theme.colors.outlineVariant,
-            borderStyle: editing ? 'dashed' : 'solid',
-          },
-        ]}
-        elevation={1}
-        mode="flat">
-        {editing ? (
-          <View style={styles.dragHandle} pointerEvents="none">
-            <Icon source="drag" size={18} color={theme.colors.onSurfaceVariant} />
-          </View>
-        ) : null}
-        {editing && onDelete ? (
-          <IconButton
-            icon="minus"
-            size={16}
-            mode="contained"
-            containerColor={theme.colors.error}
-            iconColor={theme.colors.onError}
-            style={styles.deleteBadge}
-            accessibilityLabel={`Remove ${def.label}`}
-            onPress={onDelete}
-          />
-        ) : null}
-
-        <Text
-          numberOfLines={1}
-          style={[
-            styles.label,
-            {
-              color: theme.colors.onSurfaceVariant,
-              fontSize: scale.label,
-              lineHeight: Math.round(scale.label * 1.2),
-            },
-          ]}>
-          {def.label}
-        </Text>
-
-        <View style={styles.valueWrap}>
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            style={[
-              styles.value,
-              {
-                color: theme.colors.onSurface,
-                fontSize: scale.value,
-                lineHeight: Math.round(scale.value * 1.1),
-              },
-            ]}>
-            {display}
-          </Text>
-        </View>
-
-        <Text
-          numberOfLines={1}
-          style={[
-            styles.unit,
-            {
-              color: theme.colors.onSurfaceVariant,
-              fontSize: scale.unit,
-              lineHeight: Math.round(scale.unit * 1.2),
-              opacity: def.unit ? 1 : 0,
-            },
-          ]}>
-          {def.unit || ' '}
-        </Text>
-      </Surface>
+      style={styles.pressable}>
+      {tileBody}
     </TouchableRipple>
   );
 }
@@ -164,37 +228,56 @@ const styles = StyleSheet.create({
     flex: 1,
     alignSelf: 'stretch',
   },
+  noSelect: {
+    ...(Platform.OS === 'web'
+      ? ({
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none',
+        } as object)
+      : null),
+  },
+  grab: {
+    ...(Platform.OS === 'web' ? ({ cursor: 'grab' } as object) : null),
+  },
   tile: {
     flex: 1,
     borderRadius: 16,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     justifyContent: 'space-between',
     borderWidth: 1,
   },
-  tileEditing: {
-    paddingTop: 44,
-  },
-  dragging: { opacity: 0.55 },
-  draggable: { cursor: 'grab' } as object,
-  label: { fontWeight: '600', alignSelf: 'flex-start' },
+  tileEditing: {},
+  dragging: { opacity: 0.35 },
+  label: { fontWeight: '600', alignSelf: 'flex-start', flexShrink: 0 },
   valueWrap: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'flex-start',
     minHeight: 0,
+    width: '100%',
+    overflow: 'hidden',
   },
-  value: { fontWeight: '700', fontVariant: ['tabular-nums'] },
-  unit: { fontWeight: '500', alignSelf: 'flex-start' },
-  deleteBadge: {
+  value: {
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    ...(Platform.OS === 'web'
+      ? ({ whiteSpace: 'nowrap', textOverflow: 'clip', overflow: 'hidden' } as object)
+      : null),
+  },
+  unit: { fontWeight: '500', alignSelf: 'flex-start', flexShrink: 0 },
+  deleteWrap: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 6,
+    right: 6,
+    zIndex: 3,
+  },
+  deleteBadge: {
     margin: 0,
-    zIndex: 2,
   },
   dragHandle: {
     position: 'absolute',
-    top: 12,
-    left: 12,
+    zIndex: 2,
   },
 });

@@ -15,7 +15,6 @@ import { space } from '@/src/theme';
 export default function WorkoutScreen() {
   const theme = useTheme();
   const connection = useWorkoutStore((s) => s.connection);
-  const device = useWorkoutStore((s) => s.device);
   const error = useWorkoutStore((s) => s.error);
   const clearError = useWorkoutStore((s) => s.clearError);
   const metrics = useWorkoutStore((s) => s.metrics);
@@ -62,16 +61,6 @@ export default function WorkoutScreen() {
                 paddleerg
               </Text>
             </View>
-            {connected || reconnecting ? (
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.onSurfaceVariant }}
-                numberOfLines={1}>
-                {reconnecting
-                  ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
-                  : `${device?.name || 'Connected'}${phase === 'active' ? ' · LIVE' : ''}`}
-              </Text>
-            ) : null}
           </View>
 
           <View style={styles.headerActions}>
@@ -154,7 +143,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     flexShrink: 0,
   },
-  headerLeft: { flex: 1, gap: 2, minWidth: 0 },
+  headerLeft: { flex: 1, minWidth: 0 },
   brandRow: { flexDirection: 'row', alignItems: 'center', marginLeft: -8 },
   brandIcon: { margin: 0 },
   brand: { fontWeight: '800', letterSpacing: -0.4 },

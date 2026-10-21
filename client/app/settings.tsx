@@ -1,9 +1,7 @@
 import { useEffect } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Appbar,
   Button,
   Divider,
   List,
@@ -15,6 +13,7 @@ import {
 import { ConnectButton } from '@/src/components/ConnectButton';
 import { DebugSection } from '@/src/components/DebugSection';
 import { Notice } from '@/src/components/Notice';
+import { ScreenPanel } from '@/src/components/ScreenPanel';
 import { StravaConnectButton } from '@/src/components/StravaConnectButton';
 import { STRAVA_SPORT_OPTIONS, useStravaStore } from '@/src/store/stravaStore';
 import { useLayoutStore } from '@/src/store/layoutStore';
@@ -59,106 +58,91 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView
-      style={[styles.safe, { backgroundColor: theme.colors.background }]}
-      edges={['top', 'left', 'right']}>
-      <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }} statusBarHeight={0}>
-        <Appbar.Content title="Settings" titleStyle={styles.appbarTitle} />
-        <Appbar.Action icon="close" accessibilityLabel="Close settings" onPress={close} />
-      </Appbar.Header>
-
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <SectionTitle>Bluetooth</SectionTitle>
-        <List.Item
-          title={
-            connected
-              ? `Connected to ${device?.name || 'device'}`
-              : reconnecting
-                ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
-                : 'Not connected'
-          }
-        />
-        <View style={styles.actions}>
-          {connected || reconnecting ? (
-            <Button mode="outlined" textColor={theme.colors.error} onPress={() => void disconnect()}>
-              Disconnect
-            </Button>
-          ) : null}
-          {!connected ? <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} /> : null}
-          {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
-        </View>
-
-        <Divider style={styles.divider} />
-
-        <SectionTitle>Strava</SectionTitle>
-        <List.Item
-          title={
-            tokens
-              ? `Connected${tokens.athlete?.firstname ? ` as ${tokens.athlete.firstname}` : ''}`
+    <ScreenPanel title="Settings" onClose={close} closeAccessibilityLabel="Close settings">
+      <SectionTitle>Bluetooth</SectionTitle>
+      <List.Item
+        title={
+          connected
+            ? `Connected to ${device?.name || 'device'}`
+            : reconnecting
+              ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
               : 'Not connected'
-          }
-        />
-        <View style={styles.actions}>
-          {tokens ? (
-            <Button mode="outlined" textColor={theme.colors.error} onPress={() => void logout()}>
-              Disconnect Strava
-            </Button>
-          ) : (
-            <StravaConnectButton />
-          )}
-        </View>
-
-        <Divider style={styles.divider} />
-
-        <SectionTitle>Sport type</SectionTitle>
-        <RadioButton.Group
-          onValueChange={(value) => setSportType(value as typeof sportType)}
-          value={sportType}>
-          <View style={styles.sportList}>
-            {STRAVA_SPORT_OPTIONS.map((sport) => {
-              const selected = sportType === sport.value;
-              return (
-                <TouchableRipple
-                  key={sport.value}
-                  onPress={() => setSportType(sport.value)}
-                  style={styles.sportRow}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={sport.label}>
-                  <View style={styles.sportRowInner}>
-                    <RadioButton value={sport.value} status={selected ? 'checked' : 'unchecked'} />
-                    <Text variant="bodyLarge">{sport.label}</Text>
-                  </View>
-                </TouchableRipple>
-              );
-            })}
-          </View>
-        </RadioButton.Group>
-
-        <Divider style={styles.divider} />
-
-        <SectionTitle>Dashboard</SectionTitle>
-        <View style={styles.actions}>
-          <Button mode="outlined" onPress={resetLayout}>
-            Reset metric tiles
+        }
+      />
+      <View style={styles.actions}>
+        {connected || reconnecting ? (
+          <Button mode="outlined" textColor={theme.colors.error} onPress={() => void disconnect()}>
+            Disconnect
           </Button>
+        ) : null}
+        {!connected ? <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} /> : null}
+        {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
+      </View>
+
+      <Divider style={styles.divider} />
+
+      <SectionTitle>Strava</SectionTitle>
+      <List.Item
+        title={
+          tokens
+            ? `Connected${tokens.athlete?.firstname ? ` as ${tokens.athlete.firstname}` : ''}`
+            : 'Not connected'
+        }
+      />
+      <View style={styles.actions}>
+        {tokens ? (
+          <Button mode="outlined" textColor={theme.colors.error} onPress={() => void logout()}>
+            Disconnect Strava
+          </Button>
+        ) : (
+          <StravaConnectButton />
+        )}
+      </View>
+
+      <Divider style={styles.divider} />
+
+      <SectionTitle>Sport type</SectionTitle>
+      <RadioButton.Group
+        onValueChange={(value) => setSportType(value as typeof sportType)}
+        value={sportType}>
+        <View style={styles.sportList}>
+          {STRAVA_SPORT_OPTIONS.map((sport) => {
+            const selected = sportType === sport.value;
+            return (
+              <TouchableRipple
+                key={sport.value}
+                onPress={() => setSportType(sport.value)}
+                style={styles.sportRow}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={sport.label}>
+                <View style={styles.sportRowInner}>
+                  <RadioButton value={sport.value} status={selected ? 'checked' : 'unchecked'} />
+                  <Text variant="bodyLarge">{sport.label}</Text>
+                </View>
+              </TouchableRipple>
+            );
+          })}
         </View>
+      </RadioButton.Group>
 
-        <Divider style={styles.divider} />
+      <Divider style={styles.divider} />
 
-        <DebugSection />
-      </ScrollView>
-    </SafeAreaView>
+      <SectionTitle>Dashboard</SectionTitle>
+      <View style={styles.actions}>
+        <Button mode="outlined" onPress={resetLayout}>
+          Reset metric tiles
+        </Button>
+      </View>
+
+      <Divider style={styles.divider} />
+
+      <DebugSection />
+    </ScreenPanel>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  appbarTitle: { fontWeight: '600' },
-  scroll: {
-    paddingBottom: 48,
-    paddingHorizontal: space.sm,
-  },
   sectionTitle: {
     marginTop: space.lg,
     marginBottom: space.md,
