@@ -11,7 +11,7 @@ export function getStravaConfig() {
     clientId: requireEnv('STRAVA_CLIENT_ID'),
     clientSecret: requireEnv('STRAVA_CLIENT_SECRET'),
     redirectUri:
-      process.env.STRAVA_REDIRECT_URI?.trim() || 'http://localhost:8787/strava/callback',
+      process.env.STRAVA_REDIRECT_URI?.trim() || 'http://localhost:8788/strava/callback',
     clientReturnUrl: process.env.CLIENT_RETURN_URL?.trim() || 'http://localhost:8081',
     scopes: process.env.STRAVA_SCOPES?.trim() || 'activity:write,read',
   };

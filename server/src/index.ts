@@ -5,7 +5,7 @@ import { createApp } from './app';
 dotenv.config({ path: path.join(__dirname, '../.env') });
 dotenv.config();
 
-const PORT = Number(process.env.PORT || process.env.STRAVA_PROXY_PORT || 8787);
+const PORT = Number(process.env.PORT || process.env.STRAVA_PROXY_PORT || 8788);
 const app = createApp();
 
 app.listen(PORT, () => {

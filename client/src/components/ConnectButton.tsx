@@ -12,16 +12,17 @@ export function ConnectButton({ label = 'Connect' }: Props) {
   const busy = connection === 'connecting';
   const disabled = !isWebBluetoothSupported() || busy;
 
+  // Avoid Paper `loading` on web: its ActivityIndicator uses RN Animated with
+  // useNativeDriver, which is unsupported and spams the console.
   return (
     <Button
       mode="contained"
       icon="bluetooth"
-      loading={busy}
       disabled={disabled}
       onPress={() => {
         void chooseFtmsDevice();
       }}>
-      {label}
+      {busy ? 'Connecting…' : label}
     </Button>
   );
 }

@@ -154,7 +154,7 @@ export function MetricTile({
         <Text
           numberOfLines={1}
           style={[
-            styles.value,
+            styles.valueText,
             {
               color: theme.colors.onSurface,
               fontSize: valueFont,
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     width: '100%',
     overflow: 'hidden',
   },
-  value: {
+  valueText: {
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
     ...(Platform.OS === 'web'

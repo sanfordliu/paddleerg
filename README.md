@@ -43,7 +43,7 @@ Then open **http://localhost:8081** (Chrome or Edge).
 | Service | URL |
 |---|---|
 | Client | http://localhost:8081 |
-| Server health | http://localhost:8787/health |
+| Server health | http://localhost:8788/health |
 
 `npm run web` / `npm run server` start each package alone.
 
@@ -56,7 +56,7 @@ Then open **http://localhost:8081** (Chrome or Edge).
 
 OAuth redirect URI (server, not the Expo app):
 
-`http://localhost:8787/strava/callback`
+`http://localhost:8788/strava/callback`
 
 **Secrets stay on the server only:**
 
@@ -64,15 +64,15 @@ OAuth redirect URI (server, not the Expo app):
 # server/.env
 STRAVA_CLIENT_ID=
 STRAVA_CLIENT_SECRET=
-STRAVA_REDIRECT_URI=http://localhost:8787/strava/callback
+STRAVA_REDIRECT_URI=http://localhost:8788/strava/callback
 CLIENT_RETURN_URL=http://localhost:8081
 CORS_ORIGINS=http://localhost:8081
-PORT=8787
+PORT=8788
 ```
 
 ```bash
 # client/.env
-EXPO_PUBLIC_API_URL=http://localhost:8787
+EXPO_PUBLIC_API_URL=http://localhost:8788
 ```
 
 ### Connect flow
@@ -90,7 +90,7 @@ EXPO_PUBLIC_API_URL=http://localhost:8787
 |---|---|
 | `npm run dev` | Client web + server |
 | `npm run web` | Client only (`:8081`) |
-| `npm run server` | Server only (`:8787`) |
+| `npm run server` | Server only (`:8788`) |
 | `npm run lint` | Client lint |
 | `npm run typecheck` | Client + server |
 | `npm run test:ftms` | FTMS parser checks |

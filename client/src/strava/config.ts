@@ -2,10 +2,10 @@
  * Public client config only. Strava client secret and OAuth authorize
  * live on the server (@paddleerg/server).
  *
- * Set EXPO_PUBLIC_API_URL in client/.env (e.g. http://localhost:8787).
+ * Set EXPO_PUBLIC_API_URL in client/.env (e.g. http://localhost:8788).
  */
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL?.trim() || 'http://localhost:8787';
+  process.env.EXPO_PUBLIC_API_URL?.trim() || 'http://localhost:8788';
 
 /** API sport_type values + UI labels */
 export const STRAVA_SPORT_OPTIONS = [

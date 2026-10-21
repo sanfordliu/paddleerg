@@ -5,7 +5,7 @@
 
 ```bash
 npm install
-npm run dev          # client :8081 + server :8787
+npm run dev          # client :8081 + server :8788
 npm run typecheck
 ```
 

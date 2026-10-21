@@ -84,6 +84,9 @@ export default function WorkoutScreen() {
                 onPress={stopWorkout}
               />
             ) : null}
+            {!connected ? (
+              <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} />
+            ) : null}
             <IconButton
               icon={editing ? 'check' : 'pencil-outline'}
               mode={editing ? 'contained' : 'contained-tonal'}
@@ -101,12 +104,6 @@ export default function WorkoutScreen() {
             />
           </View>
         </View>
-
-        {!connected ? (
-          <View style={styles.connectRow}>
-            <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} />
-          </View>
-        ) : null}
 
         {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
 
@@ -137,7 +134,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: space.md,
     minHeight: 48,
@@ -147,8 +144,12 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: 'row', alignItems: 'center', marginLeft: -8 },
   brandIcon: { margin: 0 },
   brand: { fontWeight: '800', letterSpacing: -0.4 },
-  headerActions: { flexDirection: 'row', alignItems: 'center' },
-  connectRow: { alignSelf: 'flex-start', flexShrink: 0 },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: space.xs,
+  },
   board: { flex: 1, minHeight: 0 },
   share: { flexShrink: 0 },
 });
