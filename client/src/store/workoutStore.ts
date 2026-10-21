@@ -76,12 +76,23 @@ function finishActiveWorkout(get: Get): Partial<WorkoutState> {
 
 function beginAutoReconnectInternal(set: Set, get: Get) {
   const adapter = getBleAdapter();
-  if (!adapter.hasRememberedDevice()) return;
+  // Silent reconnect requires an in-memory BluetoothDevice (same page session).
+  if (!adapter.hasLiveDevice()) {
+    const remembered = adapter.getRememberedDeviceInfo();
+    set({
+      connection: 'disconnected',
+      device: remembered,
+      error: remembered
+        ? `Previously connected to ${remembered.name || 'your Whipr'}. Tap Connect to choose it again (browsers cannot reconnect after a refresh).`
+        : null,
+    });
+    return;
+  }
 
-  const remembered = adapter.getRememberedDeviceInfo();
+  const remembered = adapter.getRememberedDeviceInfo() ?? get().device;
   set({
     connection: 'reconnecting',
-    device: remembered ?? get().device,
+    device: remembered,
     error: null,
   });
 
@@ -93,7 +104,6 @@ function beginAutoReconnectInternal(set: Set, get: Get) {
         error: message,
         device: adapter.getRememberedDeviceInfo() ?? device,
       });
-      // Keep hunting if setup failed transiently.
       beginAutoReconnectInternal(set, get);
     });
   });
@@ -190,23 +200,32 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       await afterConnected(set, get, device);
     } catch (e) {
       clearConnectionHandler();
-      const remembered = adapter.getRememberedDeviceInfo();
-      if (remembered) {
+      if (adapter.hasLiveDevice()) {
         set({
           connection: 'reconnecting',
           error: mapConnectError(e),
-          device: remembered,
+          device: adapter.getRememberedDeviceInfo(),
         });
         beginAutoReconnectInternal(set, get);
       } else {
-        set({ connection: 'disconnected', error: mapConnectError(e), device: null });
+        set({
+          connection: 'disconnected',
+          error: mapConnectError(e),
+          device: adapter.getRememberedDeviceInfo(),
+        });
       }
     }
   },
 
   beginAutoReconnect() {
     const { connection } = get();
-    if (connection === 'connected' || connection === 'connecting' || connection === 'reconnecting') {
+    if (connection === 'connected' || connection === 'connecting') return;
+    // Page load / HMR: only auto-retry if this tab still owns the BluetoothDevice.
+    if (!getBleAdapter().hasLiveDevice()) {
+      const remembered = getBleAdapter().getRememberedDeviceInfo();
+      if (remembered && connection === 'disconnected') {
+        set({ device: remembered });
+      }
       return;
     }
     beginAutoReconnectInternal(set, get);

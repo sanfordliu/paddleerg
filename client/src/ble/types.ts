@@ -62,6 +62,8 @@ export interface BleAdapter {
    */
   startAutoReconnect(onReconnected: (device: BleDeviceInfo) => void): void;
   stopAutoReconnect(): void;
+  /** True only while this page still holds a BluetoothDevice (same browsing session). */
+  hasLiveDevice(): boolean;
   hasRememberedDevice(): boolean;
   getRememberedDeviceInfo(): BleDeviceInfo | null;
   disconnect(): Promise<void>;

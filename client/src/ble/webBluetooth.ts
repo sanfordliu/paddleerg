@@ -21,7 +21,7 @@ const FTMS_NOTIFY_CHARS = new Set([
   normalizeUuid(CROSS_TRAINER_DATA),
 ]);
 
-const REMEMBERED_DEVICE_KEY = 'paddleerg-ble-device-id';
+const REMEMBERED_DEVICE_KEY = 'paddleerg-ble-device';
 
 function characteristicProperties(c: BluetoothRemoteGATTCharacteristic): string[] {
   const p = c.properties;
@@ -34,17 +34,27 @@ function characteristicProperties(c: BluetoothRemoteGATTCharacteristic): string[
   return out;
 }
 
-function readRememberedId(): string | null {
+function readRemembered(): BleDeviceInfo | null {
   try {
-    return localStorage.getItem(REMEMBERED_DEVICE_KEY);
+    const raw = localStorage.getItem(REMEMBERED_DEVICE_KEY);
+    if (!raw) {
+      // Migrate legacy id-only key
+      const legacy = localStorage.getItem('paddleerg-ble-device-id');
+      if (!legacy) return null;
+      return { id: legacy, name: null };
+    }
+    const parsed = JSON.parse(raw) as { id?: string; name?: string | null };
+    if (!parsed?.id) return null;
+    return { id: parsed.id, name: parsed.name ?? null };
   } catch {
     return null;
   }
 }
 
-function writeRememberedId(id: string | null) {
+function writeRemembered(info: BleDeviceInfo | null) {
   try {
-    if (id) localStorage.setItem(REMEMBERED_DEVICE_KEY, id);
+    localStorage.removeItem('paddleerg-ble-device-id');
+    if (info) localStorage.setItem(REMEMBERED_DEVICE_KEY, JSON.stringify(info));
     else localStorage.removeItem(REMEMBERED_DEVICE_KEY);
   } catch {
     // ignore quota / private mode
@@ -64,6 +74,7 @@ export function createWebBluetoothAdapter(): BleAdapter {
   let autoReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let autoReconnectAttempt = 0;
   let autoReconnectCallback: ((device: BleDeviceInfo) => void) | null = null;
+  let connectInFlight = false;
 
   const onCharacteristicValueChanged = (ev: Event) => {
     const target = ev.target as BluetoothRemoteGATTCharacteristic;
@@ -110,15 +121,28 @@ export function createWebBluetoothAdapter(): BleAdapter {
     return { id: bt.id, name: bt.name ?? null };
   }
 
+  /**
+   * Establish GATT + verify FTMS. Does NOT stop the auto-reconnect loop —
+   * callers must stop it only after a successful handoff to afterConnected.
+   * Stopping here previously aborted retries on the first failed gatt.connect().
+   */
   async function finishConnect(btDevice: BluetoothDevice): Promise<BleDeviceInfo> {
     intentionalDisconnect = false;
-    stopAutoReconnectInternal();
     clearDisconnectListener();
     device = btDevice;
-    writeRememberedId(btDevice.id);
+    writeRemembered(deviceInfo(btDevice));
     disconnectListener = handleUnexpectedDisconnect;
     device.addEventListener('gattserverdisconnected', disconnectListener);
-    server = await device.gatt!.connect();
+
+    if (!device.gatt) {
+      throw new Error('Bluetooth device has no GATT server');
+    }
+    if (!device.gatt.connected) {
+      server = await device.gatt.connect();
+    } else {
+      server = device.gatt;
+    }
+
     try {
       await server.getPrimaryService(FTMS_SERVICE);
     } catch {
@@ -127,8 +151,8 @@ export function createWebBluetoothAdapter(): BleAdapter {
         server.disconnect();
       } catch {}
       clearDisconnectListener();
-      // Keep remembered id — user may power-cycle a valid FTMS later.
-      device = null;
+      // Keep remembered device — user may power-cycle a valid FTMS later.
+      device = btDevice;
       server = null;
       intentionalDisconnect = false;
       throw new Error('Not an FTMS machine (missing service 00001826-…).');
@@ -136,41 +160,48 @@ export function createWebBluetoothAdapter(): BleAdapter {
     return deviceInfo(device);
   }
 
-  async function resolveRememberedBluetoothDevice(): Promise<BluetoothDevice | null> {
-    if (device) return device;
-    if (typeof navigator === 'undefined' || !navigator.bluetooth) return null;
-    const rememberedId = readRememberedId();
-    if (!rememberedId) return null;
-    if (typeof navigator.bluetooth.getDevices !== 'function') return null;
+  /**
+   * Web Bluetooth only allows silent reconnect while we still hold the
+   * BluetoothDevice from this page session. Persistent getDevices() never
+   * shipped in stable Chrome, so after a refresh the user must Choose Device.
+   */
+  async function attemptGattReconnect(): Promise<BleDeviceInfo | null> {
+    if (!device?.gatt) return null;
+    if (connectInFlight) return null;
+    connectInFlight = true;
     try {
-      const devices = await navigator.bluetooth.getDevices();
-      const match = devices.find((d) => d.id === rememberedId) ?? null;
-      if (match) device = match;
-      return match;
-    } catch {
-      return null;
+      if (device.gatt.connected && server) {
+        try {
+          await server.getPrimaryService(FTMS_SERVICE);
+          return deviceInfo(device);
+        } catch {
+          // Stale GATT cache — fall through to full reconnect.
+        }
+      }
+      return await finishConnect(device);
+    } finally {
+      connectInFlight = false;
     }
   }
 
-  async function attemptGattReconnect(): Promise<BleDeviceInfo | null> {
-    const bt = await resolveRememberedBluetoothDevice();
-    if (!bt?.gatt) return null;
-    if (bt.gatt.connected && server) return deviceInfo(bt);
-    return finishConnect(bt);
+  function notifyReconnected(info: BleDeviceInfo) {
+    if (!autoReconnectActive) return;
+    const cb = autoReconnectCallback;
+    stopAutoReconnectInternal();
+    cb?.(info);
   }
 
   function scheduleAutoReconnect() {
     if (!autoReconnectActive) return;
-    const delayMs = Math.min(30_000, 1000 * 2 ** Math.min(autoReconnectAttempt, 4));
+    // Cap delay at 8s so we keep probing while the Whipr boots.
+    const delayMs = Math.min(8_000, 750 * 2 ** Math.min(autoReconnectAttempt, 3));
     autoReconnectTimer = setTimeout(() => {
       void (async () => {
         if (!autoReconnectActive) return;
         try {
           const info = await attemptGattReconnect();
-          if (info && autoReconnectActive) {
-            const cb = autoReconnectCallback;
-            stopAutoReconnectInternal();
-            cb?.(info);
+          if (info) {
+            notifyReconnected(info);
             return;
           }
         } catch {
@@ -209,23 +240,21 @@ export function createWebBluetoothAdapter(): BleAdapter {
 
     startAutoReconnect(onReconnected) {
       stopAutoReconnectInternal();
-      if (!this.hasRememberedDevice()) return;
+      // Only same-session BluetoothDevice objects can reconnect without a chooser.
+      if (!device) return;
       autoReconnectActive = true;
       autoReconnectCallback = onReconnected;
       autoReconnectAttempt = 0;
-      // Try immediately, then back off while offline.
       void (async () => {
         if (!autoReconnectActive) return;
         try {
           const info = await attemptGattReconnect();
-          if (info && autoReconnectActive) {
-            const cb = autoReconnectCallback;
-            stopAutoReconnectInternal();
-            cb?.(info);
+          if (info) {
+            notifyReconnected(info);
             return;
           }
         } catch {
-          // fall through to schedule
+          // Device still offline — keep trying.
         }
         autoReconnectAttempt = 1;
         scheduleAutoReconnect();
@@ -236,14 +265,17 @@ export function createWebBluetoothAdapter(): BleAdapter {
       stopAutoReconnectInternal();
     },
 
+    hasLiveDevice() {
+      return !!device;
+    },
+
     hasRememberedDevice() {
-      return !!device || !!readRememberedId();
+      return !!device || !!readRemembered();
     },
 
     getRememberedDeviceInfo() {
       if (device) return deviceInfo(device);
-      const id = readRememberedId();
-      return id ? { id, name: null } : null;
+      return readRemembered();
     },
 
     async disconnect() {
@@ -254,7 +286,7 @@ export function createWebBluetoothAdapter(): BleAdapter {
       if (device?.gatt?.connected) device.gatt.disconnect();
       device = null;
       server = null;
-      writeRememberedId(null);
+      writeRemembered(null);
       intentionalDisconnect = false;
     },
 

@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_TILE_IDS, type MetricId } from '@/src/metrics/catalog';
 
+export const MAX_TILES = 6;
+
 interface LayoutState {
   tileIds: MetricId[];
   editing: boolean;
@@ -13,10 +15,14 @@ interface LayoutState {
   resetLayout: () => void;
 }
 
+function clampTiles(ids: MetricId[]): MetricId[] {
+  return ids.slice(0, MAX_TILES);
+}
+
 export const useLayoutStore = create<LayoutState>()(
   persist(
     (set, get) => ({
-      tileIds: [...DEFAULT_TILE_IDS],
+      tileIds: clampTiles([...DEFAULT_TILE_IDS]),
       editing: false,
       setEditing: (editing) => set({ editing }),
       reorder: (from, to) => {
@@ -28,15 +34,23 @@ export const useLayoutStore = create<LayoutState>()(
       },
       removeTile: (id) => set({ tileIds: get().tileIds.filter((t) => t !== id) }),
       addTile: (id) => {
-        if (get().tileIds.includes(id)) return;
-        set({ tileIds: [...get().tileIds, id] });
+        const { tileIds } = get();
+        if (tileIds.includes(id) || tileIds.length >= MAX_TILES) return;
+        set({ tileIds: [...tileIds, id] });
       },
-      resetLayout: () => set({ tileIds: [...DEFAULT_TILE_IDS], editing: false }),
+      resetLayout: () => set({ tileIds: clampTiles([...DEFAULT_TILE_IDS]), editing: false }),
     }),
     {
       name: 'paddleerg-tile-layout',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({ tileIds: s.tileIds }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<LayoutState> | undefined;
+        const tileIds = clampTiles(
+          Array.isArray(p?.tileIds) ? (p.tileIds as MetricId[]) : current.tileIds
+        );
+        return { ...current, ...p, tileIds };
+      },
     }
   )
 );

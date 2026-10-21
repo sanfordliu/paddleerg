@@ -12,6 +12,7 @@ export function createNativeBleAdapter(): BleAdapter {
     reconnectRememberedDevice: async () => null,
     startAutoReconnect: () => {},
     stopAutoReconnect: () => {},
+    hasLiveDevice: () => false,
     hasRememberedDevice: () => false,
     getRememberedDeviceInfo: () => null,
     disconnect: async () => {},

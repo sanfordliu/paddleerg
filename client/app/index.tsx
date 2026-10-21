@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconButton, Text, useTheme } from 'react-native-paper';
@@ -14,7 +14,6 @@ import { space } from '@/src/theme';
 
 export default function WorkoutScreen() {
   const theme = useTheme();
-  const { width } = useWindowDimensions();
   const connection = useWorkoutStore((s) => s.connection);
   const device = useWorkoutStore((s) => s.device);
   const error = useWorkoutStore((s) => s.error);
@@ -34,7 +33,6 @@ export default function WorkoutScreen() {
 
   const connected = connection === 'connected';
   const reconnecting = connection === 'reconnecting';
-  const maxWidth = Math.min(width, 820);
 
   useEffect(() => {
     void hydrate();
@@ -47,114 +45,121 @@ export default function WorkoutScreen() {
   return (
     <SafeAreaView
       style={[styles.safe, { backgroundColor: theme.colors.background }]}
-      edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={[styles.shell, { maxWidth }]}>
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View style={styles.brandRow}>
-                <IconButton
-                  icon="kayaking"
-                  size={26}
-                  iconColor={theme.colors.onBackground}
-                  style={styles.brandIcon}
-                />
-                <Text
-                  variant="headlineSmall"
-                  style={[styles.brand, { color: theme.colors.onBackground }]}>
-                  paddleerg
-                </Text>
-              </View>
-              {connected || reconnecting ? (
-                <Text
-                  variant="bodySmall"
-                  style={{ color: theme.colors.onSurfaceVariant }}
-                  numberOfLines={1}>
-                  {reconnecting
-                    ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
-                    : `${device?.name || 'Connected'}${phase === 'active' ? ' · LIVE' : ''}`}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={styles.headerActions}>
-              {connected && phase !== 'active' ? (
-                <IconButton
-                  icon="play"
-                  mode="contained"
-                  containerColor={theme.colors.tertiary}
-                  iconColor={theme.colors.onTertiary}
-                  accessibilityLabel="Start workout"
-                  onPress={startWorkout}
-                />
-              ) : null}
-              {connected && phase === 'active' ? (
-                <IconButton
-                  icon="stop"
-                  mode="contained"
-                  containerColor={theme.colors.error}
-                  iconColor={theme.colors.onError}
-                  accessibilityLabel="Stop and save"
-                  onPress={stopWorkout}
-                />
-              ) : null}
+      edges={['top', 'left', 'right', 'bottom']}>
+      <View style={styles.shell}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.brandRow}>
               <IconButton
-                icon={editing ? 'check' : 'pencil-outline'}
-                mode={editing ? 'contained' : 'contained-tonal'}
-                containerColor={editing ? theme.colors.tertiary : undefined}
-                iconColor={editing ? theme.colors.onTertiary : theme.colors.onSurface}
-                accessibilityLabel={editing ? 'Done editing' : 'Edit tiles'}
-                onPress={() => setEditing(!editing)}
+                icon="kayaking"
+                size={26}
+                iconColor={theme.colors.onBackground}
+                style={styles.brandIcon}
               />
-              <IconButton
-                icon="cog-outline"
-                mode="contained-tonal"
-                iconColor={theme.colors.onSurface}
-                accessibilityLabel="Settings"
-                onPress={() => router.push('/settings')}
-              />
+              <Text
+                variant="headlineSmall"
+                style={[styles.brand, { color: theme.colors.onBackground }]}>
+                paddleerg
+              </Text>
             </View>
+            {connected || reconnecting ? (
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.onSurfaceVariant }}
+                numberOfLines={1}>
+                {reconnecting
+                  ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
+                  : `${device?.name || 'Connected'}${phase === 'active' ? ' · LIVE' : ''}`}
+              </Text>
+            ) : null}
           </View>
 
-          {!connected ? (
-            <View style={styles.connectRow}>
-              <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} />
-            </View>
-          ) : null}
-
-          {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
-
-          <MetricGrid metrics={metrics} />
-
-          {lastSavedSummary ? (
-            <ShareWorkout workout={lastSavedSummary} onDismiss={clearSaved} />
-          ) : null}
+          <View style={styles.headerActions}>
+            {connected && phase !== 'active' ? (
+              <IconButton
+                icon="play"
+                mode="contained"
+                containerColor={theme.colors.tertiary}
+                iconColor={theme.colors.onTertiary}
+                accessibilityLabel="Start workout"
+                onPress={startWorkout}
+              />
+            ) : null}
+            {connected && phase === 'active' ? (
+              <IconButton
+                icon="stop"
+                mode="contained"
+                containerColor={theme.colors.error}
+                iconColor={theme.colors.onError}
+                accessibilityLabel="Stop and save"
+                onPress={stopWorkout}
+              />
+            ) : null}
+            <IconButton
+              icon={editing ? 'check' : 'pencil-outline'}
+              mode={editing ? 'contained' : 'contained-tonal'}
+              containerColor={editing ? theme.colors.tertiary : undefined}
+              iconColor={editing ? theme.colors.onTertiary : theme.colors.onSurface}
+              accessibilityLabel={editing ? 'Done editing' : 'Edit tiles'}
+              onPress={() => setEditing(!editing)}
+            />
+            <IconButton
+              icon="cog-outline"
+              mode="contained-tonal"
+              iconColor={theme.colors.onSurface}
+              accessibilityLabel="Settings"
+              onPress={() => router.push('/settings')}
+            />
+          </View>
         </View>
-      </ScrollView>
+
+        {!connected ? (
+          <View style={styles.connectRow}>
+            <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} />
+          </View>
+        ) : null}
+
+        {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
+
+        <View style={styles.board}>
+          <MetricGrid metrics={metrics} />
+        </View>
+
+        {lastSavedSummary ? (
+          <View style={styles.share}>
+            <ShareWorkout workout={lastSavedSummary} onDismiss={clearSaved} />
+          </View>
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  scroll: {
+  shell: {
+    flex: 1,
+    width: '100%',
     paddingHorizontal: space.lg,
     paddingTop: space.sm,
-    paddingBottom: 40,
-    alignItems: 'center',
+    paddingBottom: space.md,
+    gap: space.md,
+    minHeight: 0,
   },
-  shell: { width: '100%', gap: space.md },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: space.md,
     minHeight: 48,
+    flexShrink: 0,
   },
   headerLeft: { flex: 1, gap: 2, minWidth: 0 },
   brandRow: { flexDirection: 'row', alignItems: 'center', marginLeft: -8 },
   brandIcon: { margin: 0 },
   brand: { fontWeight: '800', letterSpacing: -0.4 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
-  connectRow: { alignSelf: 'flex-start' },
+  connectRow: { alignSelf: 'flex-start', flexShrink: 0 },
+  board: { flex: 1, minHeight: 0 },
+  share: { flexShrink: 0 },
 });

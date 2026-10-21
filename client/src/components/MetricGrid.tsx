@@ -3,7 +3,7 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, Dialog, Portal, Text } from 'react-native-paper';
 import { MetricTile } from '@/src/components/MetricTile';
 import { METRIC_CATALOG, getMetricDef, type MetricId } from '@/src/metrics/catalog';
-import { useLayoutStore } from '@/src/store/layoutStore';
+import { MAX_TILES, useLayoutStore } from '@/src/store/layoutStore';
 import type { LiveMetrics } from '@/src/ble/types';
 import { space } from '@/src/theme';
 
@@ -11,8 +11,23 @@ interface Props {
   metrics: LiveMetrics;
 }
 
+function columnCount(width: number, height: number, tileCount: number): number {
+  // Portrait: 2 columns × up to 3 rows (max 6 tiles)
+  if (width < height) return 2;
+  if (width < 900 || tileCount < 5) return 2;
+  return 3;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    rows.push(items.slice(i, i + size));
+  }
+  return rows;
+}
+
 export function MetricGrid({ metrics }: Props) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const tileIds = useLayoutStore((s) => s.tileIds);
   const editing = useLayoutStore((s) => s.editing);
   const setEditing = useLayoutStore((s) => s.setEditing);
@@ -23,7 +38,11 @@ export function MetricGrid({ metrics }: Props) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  const columns = width >= 900 ? 3 : 2;
+  const visibleIds = tileIds.slice(0, MAX_TILES);
+  const columns = columnCount(width, height, visibleIds.length);
+  const rows = chunk(visibleIds, columns);
+  const atLimit = tileIds.length >= MAX_TILES;
+
   const availableToAdd = useMemo(
     () => METRIC_CATALOG.filter((m) => !tileIds.includes(m.id)),
     [tileIds]
@@ -36,41 +55,51 @@ export function MetricGrid({ metrics }: Props) {
           <Button
             mode="contained"
             icon="plus"
-            disabled={availableToAdd.length === 0}
+            disabled={availableToAdd.length === 0 || atLimit}
             onPress={() => setAddOpen(true)}>
             Add metric
           </Button>
           <Text variant="bodySmall" style={styles.hint}>
-            Drag tiles to reorder
+            {atLimit ? `Maximum ${MAX_TILES} tiles` : 'Drag tiles to reorder'}
           </Text>
         </View>
       ) : null}
 
       <View style={styles.grid}>
-        {tileIds.map((id, index) => {
-          const def = getMetricDef(id);
-          const tileWidth = columns === 3 ? '31.5%' : '48%';
-          return (
-            <View key={id} style={{ width: tileWidth as `${number}%`, flexGrow: 1, minWidth: 140 }}>
-              <MetricTile
-                def={def}
-                metrics={metrics}
-                editing={editing}
-                dragging={dragIndex === index}
-                onLongPress={() => setEditing(true)}
-                onDelete={() => removeTile(id)}
-                onDragStart={() => setDragIndex(index)}
-                onDragOver={() => {
-                  if (dragIndex != null && dragIndex !== index) {
-                    reorder(dragIndex, index);
-                    setDragIndex(index);
-                  }
-                }}
-                onDrop={() => setDragIndex(null)}
-              />
-            </View>
-          );
-        })}
+        {rows.map((row, rowIndex) => (
+          <View key={`row-${rowIndex}`} style={styles.row}>
+            {row.map((id, colIndex) => {
+              const index = rowIndex * columns + colIndex;
+              const def = getMetricDef(id);
+              return (
+                <View key={id} style={styles.cell}>
+                  <MetricTile
+                    def={def}
+                    metrics={metrics}
+                    editing={editing}
+                    dragging={dragIndex === index}
+                    onLongPress={() => setEditing(true)}
+                    onDelete={() => removeTile(id)}
+                    onDragStart={() => setDragIndex(index)}
+                    onDragOver={() => {
+                      if (dragIndex != null && dragIndex !== index) {
+                        reorder(dragIndex, index);
+                        setDragIndex(index);
+                      }
+                    }}
+                    onDrop={() => setDragIndex(null)}
+                  />
+                </View>
+              );
+            })}
+            {/* Pad incomplete last row so cells stay equal width */}
+            {row.length < columns
+              ? Array.from({ length: columns - row.length }, (_, i) => (
+                  <View key={`pad-${i}`} style={styles.cell} />
+                ))
+              : null}
+          </View>
+        ))}
       </View>
 
       {editing && tileIds.length === 0 ? (
@@ -83,9 +112,11 @@ export function MetricGrid({ metrics }: Props) {
         <Dialog visible={addOpen} onDismiss={() => setAddOpen(false)}>
           <Dialog.Title>Add metric</Dialog.Title>
           <Dialog.ScrollArea style={styles.dialogScroll}>
-            {availableToAdd.length === 0 ? (
+            {availableToAdd.length === 0 || atLimit ? (
               <Text variant="bodyMedium" style={styles.empty}>
-                All metrics are already on the board.
+                {atLimit
+                  ? `You already have ${MAX_TILES} tiles. Remove one to add another.`
+                  : 'All metrics are already on the board.'}
               </Text>
             ) : (
               availableToAdd.map((m) => (
@@ -113,20 +144,31 @@ export function MetricGrid({ metrics }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: '100%' },
+  wrap: { flex: 1, width: '100%', minHeight: 0 },
   editBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
     marginBottom: space.md,
     flexWrap: 'wrap',
+    flexShrink: 0,
   },
   hint: { opacity: 0.7 },
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flex: 1,
     gap: space.md,
+    minHeight: 0,
+  },
+  row: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: space.md,
+    minHeight: 0,
+  },
+  cell: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
   },
   empty: { textAlign: 'center', marginTop: space.lg, opacity: 0.7 },
   dialogScroll: { maxHeight: 360, paddingHorizontal: 0 },
