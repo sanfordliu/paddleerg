@@ -52,8 +52,13 @@ function ergStatusTitle(
   return 'ERG not connected';
 }
 
-function hrStatusTitle(connected: boolean, name: string | null | undefined): string {
+function hrStatusTitle(
+  connected: boolean,
+  reconnecting: boolean,
+  name: string | null | undefined
+): string {
   if (connected) return `HR connected to ${name || 'monitor'}`;
+  if (reconnecting) return `HR reconnecting${name ? ` to ${name}` : ''}…`;
   return 'HR not connected';
 }
 
@@ -80,6 +85,7 @@ export default function SettingsScreen() {
   const connected = connection === 'connected';
   const reconnecting = connection === 'reconnecting';
   const hrConnected = hrConnection === 'connected';
+  const hrReconnecting = hrConnection === 'reconnecting';
   const hrBusy = hrConnection === 'connecting';
 
   const [birthYearText, setBirthYearText] = useState(
@@ -174,7 +180,7 @@ export default function SettingsScreen() {
       <SectionTitle>Bluetooth</SectionTitle>
       <List.Item title={ergStatusTitle(connected, reconnecting, device?.name)} />
       <List.Item
-        title={hrStatusTitle(hrConnected, hrDevice?.name)}
+        title={hrStatusTitle(hrConnected, hrReconnecting, hrDevice?.name)}
         description="BLE heart-rate straps (Polar, etc.). Apple Watch is not supported on web."
       />
       <View style={styles.actions}>
@@ -183,7 +189,7 @@ export default function SettingsScreen() {
             Disconnect ERG
           </Button>
         ) : null}
-        {hrConnected || hrBusy ? (
+        {hrConnected || hrBusy || hrReconnecting ? (
           <Button
             mode="outlined"
             textColor={theme.colors.error}
@@ -194,7 +200,9 @@ export default function SettingsScreen() {
         {!connected ? (
           <ConnectButton kind="erg" label={reconnecting ? 'Choose ERG' : 'Connect ERG'} />
         ) : null}
-        {!hrConnected && !hrBusy ? <ConnectButton kind="hr" /> : null}
+        {!hrConnected ? (
+          <ConnectButton kind="hr" label={hrReconnecting ? 'Choose HR' : 'Connect HR'} />
+        ) : null}
         {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
       </View>
 

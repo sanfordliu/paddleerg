@@ -9,6 +9,12 @@ export function createNativeHrBleAdapter(): HrBleAdapter {
   return {
     isAvailable: () => false,
     requestHeartRateDevice: async () => unavailable(),
+    reconnectRememberedDevice: async () => null,
+    startAutoReconnect: () => {},
+    stopAutoReconnect: () => {},
+    hasLiveDevice: () => false,
+    hasRememberedDevice: () => false,
+    getRememberedDeviceInfo: () => null,
     disconnect: async () => {},
     startNotifications: async () => unavailable(),
     stopNotifications: async () => {},

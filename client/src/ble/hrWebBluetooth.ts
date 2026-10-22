@@ -1,134 +1,79 @@
 import { HEART_RATE_MEASUREMENT, HEART_RATE_SERVICE, normalizeUuid } from './constants';
 import { parseHeartRateMeasurement } from './heartRate';
-import type { BleDeviceInfo, ConnectionLostHandler, HrBleAdapter } from './types';
+import type { HrBleAdapter } from './types';
+import { WebBluetoothSession } from './webBluetoothSession';
 
 const HR_MEASUREMENT = normalizeUuid(HEART_RATE_MEASUREMENT);
+const REMEMBERED_HR_KEY = 'paddleerg-ble-hr-device';
 
-export function createHrWebBluetoothAdapter(): HrBleAdapter {
-  let device: BluetoothDevice | null = null;
-  let server: BluetoothRemoteGATTServer | null = null;
-  let bpmHandler: ((bpm: number) => void) | null = null;
-  let connectionLostHandler: ConnectionLostHandler | null = null;
-  let intentionalDisconnect = false;
-  let boundChar: BluetoothRemoteGATTCharacteristic | null = null;
-  let disconnectListener: (() => void) | null = null;
+class HrWebBluetoothSession extends WebBluetoothSession implements HrBleAdapter {
+  private bpmHandler: ((bpm: number) => void) | null = null;
+  private boundChar: BluetoothRemoteGATTCharacteristic | null = null;
 
-  const onCharacteristicValueChanged = (ev: Event) => {
+  private readonly onCharacteristicValueChanged = (ev: Event) => {
     const target = ev.target as BluetoothRemoteGATTCharacteristic;
     const value = target.value;
-    if (!value || !bpmHandler) return;
+    if (!value || !this.bpmHandler) return;
     const bytes = new Uint8Array(
       value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)
     );
     const bpm = parseHeartRateMeasurement(bytes);
-    if (bpm != null) bpmHandler(bpm);
+    if (bpm != null) this.bpmHandler(bpm);
   };
 
-  function clearDisconnectListener() {
-    if (device && disconnectListener) {
-      device.removeEventListener('gattserverdisconnected', disconnectListener);
-    }
-    disconnectListener = null;
+  protected rememberStorageKey(): string | null {
+    return REMEMBERED_HR_KEY;
   }
 
-  function handleUnexpectedDisconnect() {
-    server = null;
-    boundChar = null;
-    bpmHandler = null;
-    if (!intentionalDisconnect) connectionLostHandler?.();
+  protected requiredServiceUuid(): string {
+    return HEART_RATE_SERVICE;
   }
 
-  function deviceInfo(bt: BluetoothDevice): BleDeviceInfo {
-    return { id: bt.id, name: bt.name ?? null };
+  protected missingServiceMessage(): string {
+    return 'Not a heart rate monitor (missing service 0000180d-…).';
   }
 
-  return {
-    isAvailable() {
-      return typeof navigator !== 'undefined' && !!navigator.bluetooth;
-    },
+  protected clearNotificationBindings(): void {
+    this.boundChar = null;
+    this.bpmHandler = null;
+  }
 
-    async requestHeartRateDevice() {
-      if (!navigator.bluetooth) {
-        throw new Error('Web Bluetooth is not available. Use Chrome or Edge.');
-      }
-      await this.disconnect();
-      intentionalDisconnect = false;
-      const btDevice = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [HEART_RATE_SERVICE] }],
-        optionalServices: [HEART_RATE_SERVICE],
-      });
-
-      clearDisconnectListener();
-      device = btDevice;
-      disconnectListener = handleUnexpectedDisconnect;
-      device.addEventListener('gattserverdisconnected', disconnectListener);
-
-      if (!device.gatt) {
-        throw new Error('Bluetooth device has no GATT server');
-      }
-      server = device.gatt.connected ? device.gatt : await device.gatt.connect();
-
+  protected async stopNotificationsInternal(): Promise<void> {
+    if (this.boundChar) {
       try {
-        await server.getPrimaryService(HEART_RATE_SERVICE);
-      } catch {
-        intentionalDisconnect = true;
-        try {
-          server.disconnect();
-        } catch {}
-        clearDisconnectListener();
-        device = null;
-        server = null;
-        intentionalDisconnect = false;
-        throw new Error('Not a heart rate monitor (missing service 0000180d-…).');
-      }
-      return deviceInfo(device);
-    },
+        this.boundChar.removeEventListener(
+          'characteristicvaluechanged',
+          this.onCharacteristicValueChanged
+        );
+        await this.boundChar.stopNotifications();
+      } catch {}
+    }
+    this.clearNotificationBindings();
+  }
 
-    async disconnect() {
-      intentionalDisconnect = true;
-      await this.stopNotifications();
-      clearDisconnectListener();
-      if (device?.gatt?.connected) device.gatt.disconnect();
-      device = null;
-      server = null;
-      intentionalDisconnect = false;
-    },
+  async requestHeartRateDevice() {
+    return this.requestFilteredDevice(HEART_RATE_SERVICE);
+  }
 
-    async startNotifications(onBpm) {
-      if (!server) throw new Error('Not connected');
-      await this.stopNotifications();
-      bpmHandler = onBpm;
-      const service = await server.getPrimaryService(HEART_RATE_SERVICE);
-      const char = await service.getCharacteristic(HR_MEASUREMENT);
-      if (!char.properties.notify && !char.properties.indicate) {
-        throw new Error('Heart rate characteristic does not support notifications.');
-      }
-      char.addEventListener('characteristicvaluechanged', onCharacteristicValueChanged);
-      await char.startNotifications();
-      boundChar = char;
-    },
+  async startNotifications(onBpm: (bpm: number) => void): Promise<void> {
+    if (!this.server) throw new Error('Not connected');
+    await this.stopNotificationsInternal();
+    this.bpmHandler = onBpm;
+    const service = await this.server.getPrimaryService(HEART_RATE_SERVICE);
+    const char = await service.getCharacteristic(HR_MEASUREMENT);
+    if (!char.properties.notify && !char.properties.indicate) {
+      throw new Error('Heart rate characteristic does not support notifications.');
+    }
+    char.addEventListener('characteristicvaluechanged', this.onCharacteristicValueChanged);
+    await char.startNotifications();
+    this.boundChar = char;
+  }
 
-    async stopNotifications() {
-      if (boundChar) {
-        try {
-          boundChar.removeEventListener('characteristicvaluechanged', onCharacteristicValueChanged);
-          await boundChar.stopNotifications();
-        } catch {}
-        boundChar = null;
-      }
-      bpmHandler = null;
-    },
+  async stopNotifications(): Promise<void> {
+    await this.stopNotificationsInternal();
+  }
+}
 
-    getConnectedDevice() {
-      return device?.gatt?.connected ? deviceInfo(device) : null;
-    },
-
-    isLinkConnected() {
-      return !!device?.gatt?.connected;
-    },
-
-    setConnectionLostHandler(handler) {
-      connectionLostHandler = handler;
-    },
-  };
+export function createHrWebBluetoothAdapter(): HrBleAdapter {
+  return new HrWebBluetoothSession();
 }

@@ -7,6 +7,8 @@
 | **Connect ERG** | Fitness Machine Service `0x1826` | FTMS (Whipr) |
 | **Connect HR** | Heart Rate Service `0x180D` | BLE HR straps (Polar, etc.) |
 
+Both sessions share `WebBluetoothSession` (GATT connect + same-page-session auto-reconnect). After a full refresh, the browser still requires Choose Device again.
+
 Apple Watch / HealthKit is **not** available in the browser. Dedicated HR BPM overrides FTMS-embedded heart rate when both are present.
 
 ## Expected ERG profile

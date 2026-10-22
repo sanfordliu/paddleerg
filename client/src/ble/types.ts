@@ -51,9 +51,9 @@ export interface WorkoutSample {
 
 export type ConnectionLostHandler = () => void;
 
-export interface BleAdapter {
+/** Shared session lifecycle for ERG and HR (connect, drop, same-session reconnect). */
+export interface BleSessionAdapter {
   isAvailable(): boolean;
-  requestFtmsDevice(): Promise<BleDeviceInfo>;
   /** Reconnect to the in-memory / previously permitted device, or null if none. */
   reconnectRememberedDevice(): Promise<BleDeviceInfo | null>;
   /**
@@ -67,22 +67,20 @@ export interface BleAdapter {
   hasRememberedDevice(): boolean;
   getRememberedDeviceInfo(): BleDeviceInfo | null;
   disconnect(): Promise<void>;
-  discover(): Promise<GattServiceInfo[]>;
-  startNotifications(onNotification: (event: NotificationEvent) => void): Promise<void>;
   stopNotifications(): Promise<void>;
   getConnectedDevice(): BleDeviceInfo | null;
   isLinkConnected(): boolean;
   setConnectionLostHandler(handler: ConnectionLostHandler | null): void;
 }
 
+export interface BleAdapter extends BleSessionAdapter {
+  requestFtmsDevice(): Promise<BleDeviceInfo>;
+  discover(): Promise<GattServiceInfo[]>;
+  startNotifications(onNotification: (event: NotificationEvent) => void): Promise<void>;
+}
+
 /** Separate BLE session for a Heart Rate Service monitor (strap, etc.). */
-export interface HrBleAdapter {
-  isAvailable(): boolean;
+export interface HrBleAdapter extends BleSessionAdapter {
   requestHeartRateDevice(): Promise<BleDeviceInfo>;
-  disconnect(): Promise<void>;
   startNotifications(onBpm: (bpm: number) => void): Promise<void>;
-  stopNotifications(): Promise<void>;
-  getConnectedDevice(): BleDeviceInfo | null;
-  isLinkConnected(): boolean;
-  setConnectionLostHandler(handler: ConnectionLostHandler | null): void;
 }
