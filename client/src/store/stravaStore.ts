@@ -88,6 +88,7 @@ interface StravaState {
     metrics: LiveMetrics;
     samples: WorkoutSample[];
     sportType?: StravaSportType;
+    description?: string;
   }) => Promise<number | null>;
 }
 
@@ -179,6 +180,7 @@ export const useStravaStore = create<StravaState>((set, get) => ({
         tcx,
         name,
         sportType,
+        description: workout.description,
         externalId: `paddleerg-${workout.startedAt}`,
       });
       const polled = await pollUpload(accessToken, upload.id);

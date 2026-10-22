@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
-import { Button, Text, useTheme } from 'react-native-paper';
+import { Button, Text, TextInput, useTheme } from 'react-native-paper';
 import { AppModal } from '@/src/components/AppModal';
 import { Notice } from '@/src/components/Notice';
 import { StravaConnectButton } from '@/src/components/StravaConnectButton';
@@ -62,9 +63,11 @@ export function ShareWorkout({ visible, workout, onDismiss }: Props) {
   const clearStatus = useStravaStore((s) => s.clearStatus);
   const shareWorkout = useStravaStore((s) => s.shareWorkout);
   const uploading = status === 'Uploading to Strava…';
+  const [notes, setNotes] = useState('');
 
   const dismiss = () => {
     clearStatus();
+    setNotes('');
     onDismiss();
   };
 
@@ -76,6 +79,7 @@ export function ShareWorkout({ visible, workout, onDismiss }: Props) {
       metrics: workout.metrics,
       samples: workout.samples,
       sportType,
+      description: notes.trim() || undefined,
     }).catch(() => {});
   };
 
@@ -94,7 +98,8 @@ export function ShareWorkout({ visible, workout, onDismiss }: Props) {
       visible={visible}
       title="Share workout"
       onClose={dismiss}
-      closeAccessibilityLabel="Close share workout">
+      closeAccessibilityLabel="Close share workout"
+      scroll>
       <View style={styles.content}>
         <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
           Workout saved. Upload it to Strava or close this screen.
@@ -113,6 +118,19 @@ export function ShareWorkout({ visible, workout, onDismiss }: Props) {
           <SummaryRow label="Distance" value={distance} />
           <SummaryRow label="Avg pace" value={pace === '—' ? '—' : `${pace} /500m`} />
         </View>
+
+        <TextInput
+          mode="outlined"
+          label="Notes"
+          placeholder="How did the session feel?"
+          value={notes}
+          onChangeText={setNotes}
+          multiline
+          numberOfLines={4}
+          disabled={uploading}
+          style={styles.notes}
+          contentStyle={styles.notesContent}
+        />
 
         {tokens ? (
           <View style={styles.actions}>
@@ -164,6 +182,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'baseline',
     gap: space.md,
+  },
+  notes: {
+    alignSelf: 'stretch',
+  },
+  notesContent: {
+    minHeight: 96,
   },
   actions: {
     gap: space.md,

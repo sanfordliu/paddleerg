@@ -7,11 +7,9 @@ export const MAX_TILES = 6;
 
 interface LayoutState {
   tileIds: MetricId[];
-  editing: boolean;
-  setEditing: (editing: boolean) => void;
   reorder: (from: number, to: number) => void;
   reorderById: (fromId: MetricId, toId: MetricId) => void;
-  /** Swap two tiles by id (grid drag-onto-tile). */
+  /** Swap two tiles by id. */
   swapById: (a: MetricId, b: MetricId) => void;
   removeTile: (id: MetricId) => void;
   addTile: (id: MetricId) => void;
@@ -26,8 +24,6 @@ export const useLayoutStore = create<LayoutState>()(
   persist(
     (set, get) => ({
       tileIds: clampTiles([...DEFAULT_TILE_IDS]),
-      editing: false,
-      setEditing: (editing) => set({ editing }),
       reorder: (from, to) => {
         const next = [...get().tileIds];
         if (from < 0 || to < 0 || from >= next.length || to >= next.length) return;
@@ -61,7 +57,7 @@ export const useLayoutStore = create<LayoutState>()(
         if (tileIds.includes(id) || tileIds.length >= MAX_TILES) return;
         set({ tileIds: [...tileIds, id] });
       },
-      resetLayout: () => set({ tileIds: clampTiles([...DEFAULT_TILE_IDS]), editing: false }),
+      resetLayout: () => set({ tileIds: clampTiles([...DEFAULT_TILE_IDS]) }),
     }),
     {
       name: 'paddleerg-tile-layout',

@@ -1,32 +1,37 @@
 import { useState } from 'react';
 import { LayoutChangeEvent, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Icon, IconButton, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { Icon, Surface, Text, useTheme } from 'react-native-paper';
 import type { MetricDef } from '@/src/metrics/catalog';
 import type { LiveMetrics } from '@/src/ble/types';
-import { evaluateBand, isBandableMetricId, type BandColor } from '@/src/metrics/bands';
+import { resolveMaxHr } from '@/src/metrics/bandDefaults';
+import {
+  evaluateHrZone,
+  evaluateTarget,
+  isTargetMetricId,
+  type HrZone,
+  type TargetResult,
+} from '@/src/metrics/bands';
 import { useAthleteStore } from '@/src/store/athleteStore';
 import { accents } from '@/src/theme';
 
 interface Props {
   def: MetricDef;
   metrics: LiveMetrics;
-  editing: boolean;
-  dragging?: boolean;
-  dropTarget?: boolean;
   controlSize?: number;
-  onLongPress?: () => void;
-  onDelete?: () => void;
-  /** When not editing: open band settings (bandable metrics only). */
-  onPress?: () => void;
-  /** Web pointer-drag: begin reorder from this tile (not the delete control). */
-  onDragPointerDown?: (e: { clientX: number; clientY: number; pointerId: number }) => void;
 }
 
-function bandBackground(band: BandColor | null, surface: string): string {
-  if (band === 'green') return accents.bandGreen;
-  if (band === 'yellow') return accents.bandYellow;
-  if (band === 'red') return accents.bandRed;
-  return surface;
+const ZONE_TINT: Record<HrZone, string> = {
+  1: accents.zone1,
+  2: accents.zone2,
+  3: accents.zone3,
+  4: accents.zone4,
+  5: accents.zone5,
+};
+
+function targetTint(result: TargetResult): string {
+  if (result.side === 'in') return accents.targetIn;
+  if (result.side === 'under') return result.far ? accents.targetUnderFar : accents.targetUnderNear;
+  return result.far ? accents.targetOverFar : accents.targetOverNear;
 }
 
 function chromeTypeScale(width: number, height: number) {
@@ -70,28 +75,31 @@ function fitFontSize(text: string, boxW: number, boxH: number): number {
   return Math.max(12, Math.floor(lo));
 }
 
-export function MetricTile({
-  def,
-  metrics,
-  editing,
-  dragging,
-  dropTarget,
-  controlSize: controlSizeProp,
-  onLongPress,
-  onDelete,
-  onPress,
-  onDragPointerDown,
-}: Props) {
+export function MetricTile({ def, metrics }: Props) {
   const theme = useTheme();
   const { width, height } = useWindowDimensions();
   const rawValue = def.getValue(metrics);
   const display = def.format(rawValue);
-  const bandConfig = useAthleteStore((s) =>
-    isBandableMetricId(def.id) ? s.bands[def.id] : undefined
+  const targetConfig = useAthleteStore((s) =>
+    isTargetMetricId(def.id) ? s.bands[def.id] : undefined
   );
-  const band = editing ? null : evaluateBand(rawValue, bandConfig);
+  const hrZones = useAthleteStore((s) => s.hrZones);
+  const birthYear = useAthleteStore((s) => s.profile.birthYear);
+
+  const target = isTargetMetricId(def.id)
+    ? evaluateTarget(rawValue, targetConfig, def.id)
+    : null;
+  const zone =
+    def.id === 'heartRate'
+      ? evaluateHrZone(rawValue, hrZones, resolveMaxHr(hrZones, birthYear))
+      : null;
+  const background = zone
+    ? ZONE_TINT[zone]
+    : target
+      ? targetTint(target)
+      : theme.colors.surface;
+
   const chrome = chromeTypeScale(width, height);
-  const controlSize = controlSizeProp ?? chrome.control;
   const [valueBox, setValueBox] = useState({ width: 0, height: 0 });
   const valueFont = fitFontSize(display, valueBox.width, valueBox.height);
 
@@ -102,71 +110,62 @@ export function MetricTile({
     }
   };
 
-  const borderColor = dropTarget
-    ? theme.colors.secondary
-    : editing
-      ? theme.colors.secondary
-      : theme.colors.outlineVariant;
-
-  const tileBody = (
+  return (
     <Surface
       style={[
         styles.tile,
-        editing && styles.tileEditing,
         {
-          backgroundColor: bandBackground(band, theme.colors.surface),
-          borderColor,
-          borderStyle: editing ? 'dashed' : 'solid',
-          borderWidth: dropTarget ? 2 : 1,
-          paddingTop: editing ? controlSize + 12 : 16,
+          backgroundColor: background,
+          borderColor: theme.colors.outlineVariant,
+          borderStyle: 'solid',
+          borderWidth: 1,
+          paddingTop: 16,
         },
       ]}
       elevation={1}
       mode="flat">
-      {editing ? (
-        <View
-          style={[styles.dragHandle, { top: 10, left: 10 }]}
-          pointerEvents="none"
-          accessibilityLabel="Drag handle">
-          <Icon source="drag" size={Math.round(controlSize * 0.7)} color={theme.colors.onSurface} />
-        </View>
-      ) : null}
-      {editing && onDelete ? (
-        <View
-          {...(Platform.OS === 'web' ? ({ 'data-tile-delete': '1' } as object) : null)}
-          style={styles.deleteWrap}>
-          <IconButton
-            icon="minus"
-            size={Math.round(controlSize * 0.45)}
-            mode="contained"
-            containerColor={theme.colors.error}
-            iconColor={theme.colors.onError}
-            style={[
-              styles.deleteBadge,
-              {
-                width: controlSize,
-                height: controlSize,
-                borderRadius: controlSize / 2,
-              },
-            ]}
-            accessibilityLabel={`Remove ${def.label}`}
-            onPress={onDelete}
-          />
-        </View>
-      ) : null}
-
-      <Text
-        numberOfLines={1}
-        style={[
-          styles.label,
-          {
-            color: theme.colors.onSurfaceVariant,
-            fontSize: chrome.label,
-            lineHeight: Math.round(chrome.label * 1.2),
-          },
-        ]}>
-        {def.label}
-      </Text>
+      <View style={styles.header}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.label,
+            {
+              color: theme.colors.onSurfaceVariant,
+              fontSize: chrome.label,
+              lineHeight: Math.round(chrome.label * 1.2),
+            },
+          ]}>
+          {def.label}
+        </Text>
+        {zone ? (
+          <View
+            accessibilityLabel={`Heart rate zone ${zone}`}
+            style={[styles.zoneChip, { borderColor: theme.colors.onSurfaceVariant }]}>
+            <Text
+              style={{
+                color: theme.colors.onSurface,
+                fontSize: Math.round(chrome.label * 0.8),
+                lineHeight: Math.round(chrome.label * 1.05),
+                fontWeight: '700',
+              }}>
+              {`Z${zone}`}
+            </Text>
+          </View>
+        ) : null}
+        {target && target.side !== 'in' ? (
+          <View
+            accessible
+            accessibilityLabel={
+              target.side === 'over' ? 'Above target, ease off' : 'Below target, push harder'
+            }>
+            <Icon
+              source={target.side === 'over' ? 'arrow-up-bold' : 'arrow-down-bold'}
+              size={Math.round(chrome.label * 1.3)}
+              color={theme.colors.onSurface}
+            />
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.valueWrap} onLayout={onValueLayout}>
         <Text
@@ -198,68 +197,9 @@ export function MetricTile({
       </Text>
     </Surface>
   );
-
-  if (editing) {
-    return (
-      <View
-        style={[styles.pressable, styles.noSelect, styles.grab, dragging && styles.dragging]}
-        accessibilityHint="Drag to reorder"
-        {...(Platform.OS === 'web' && onDragPointerDown
-          ? ({
-              onPointerDown: (e: {
-                button?: number;
-                clientX: number;
-                clientY: number;
-                pointerId: number;
-                preventDefault?: () => void;
-                target?: { closest?: (s: string) => unknown };
-              }) => {
-                if (e.button != null && e.button !== 0) return;
-                const t = e.target as { closest?: (s: string) => unknown } | undefined;
-                if (t?.closest?.('button,[data-tile-delete]')) return;
-                e.preventDefault?.();
-                onDragPointerDown({
-                  clientX: e.clientX,
-                  clientY: e.clientY,
-                  pointerId: e.pointerId,
-                });
-              },
-            } as object)
-          : {})}>
-        {tileBody}
-      </View>
-    );
-  }
-
-  return (
-    <TouchableRipple
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={350}
-      style={styles.pressable}
-      accessibilityHint={onPress ? 'Opens band thresholds' : undefined}>
-      {tileBody}
-    </TouchableRipple>
-  );
 }
 
 const styles = StyleSheet.create({
-  pressable: {
-    flex: 1,
-    alignSelf: 'stretch',
-  },
-  noSelect: {
-    ...(Platform.OS === 'web'
-      ? ({
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          WebkitTouchCallout: 'none',
-        } as object)
-      : null),
-  },
-  grab: {
-    ...(Platform.OS === 'web' ? ({ cursor: 'grab' } as object) : null),
-  },
   tile: {
     flex: 1,
     borderRadius: 16,
@@ -268,9 +208,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderWidth: 1,
   },
-  tileEditing: {},
-  dragging: { opacity: 0.35 },
-  label: { fontWeight: '600', alignSelf: 'flex-start', flexShrink: 0 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    flexShrink: 0,
+  },
+  label: { fontWeight: '600', flexShrink: 1 },
+  zoneChip: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
   valueWrap: {
     flex: 1,
     justifyContent: 'center',
@@ -287,17 +238,4 @@ const styles = StyleSheet.create({
       : null),
   },
   unit: { fontWeight: '500', alignSelf: 'flex-start', flexShrink: 0 },
-  deleteWrap: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    zIndex: 3,
-  },
-  deleteBadge: {
-    margin: 0,
-  },
-  dragHandle: {
-    position: 'absolute',
-    zIndex: 2,
-  },
 });

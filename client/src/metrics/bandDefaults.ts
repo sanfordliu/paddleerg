@@ -1,9 +1,10 @@
 import type { StravaSportType } from '@/src/strava/config';
 import {
-  BANDABLE_METRIC_IDS,
-  emptyBandConfig,
-  type BandableMetricId,
-  type MetricBandConfig,
+  TARGET_METRIC_IDS,
+  defaultHrZonesConfig,
+  type HrZonesConfig,
+  type TargetConfig,
+  type TargetMetricId,
 } from '@/src/metrics/bands';
 
 export type AthleteGender = 'female' | 'male' | 'other';
@@ -49,41 +50,30 @@ export function estimatedMaxHr(age: number | null): number {
   return Math.round(208 - 0.7 * a);
 }
 
-function rangeAround(
-  mid: number,
-  greenHalf: number,
-  yellowHalf: number
-): Pick<MetricBandConfig, 'greenLo' | 'greenHi' | 'yellowLo' | 'yellowHi'> {
-  return {
-    greenLo: Math.round(mid - greenHalf),
-    greenHi: Math.round(mid + greenHalf),
-    yellowLo: Math.round(mid - yellowHalf),
-    yellowHi: Math.round(mid + yellowHalf),
-  };
+export function resolveMaxHr(cfg: HrZonesConfig, birthYear: number | null): number {
+  return cfg.maxHr ?? estimatedMaxHr(ageFromBirthYear(birthYear));
 }
 
-function enabledBand(
-  ranges: Pick<MetricBandConfig, 'greenLo' | 'greenHi' | 'yellowLo' | 'yellowHi'>
-): MetricBandConfig {
+function targetAround(mid: number, half: number, near: number): TargetConfig {
   return {
     enabled: true,
-    ...ranges,
+    lo: Math.round(mid - half),
+    hi: Math.round(mid + half),
+    nearMargin: Math.max(1, Math.round(near)),
     userModified: false,
   };
 }
 
 /**
- * Build suggested bands for all bandable metrics from sport + athlete profile.
+ * Suggested targets for all directional metrics from sport + athlete profile.
  * Numbers are approximate recreational targets scaled by fitness level.
  */
-export function buildDefaultBands(
+export function buildDefaultTargets(
   sportType: StravaSportType,
   profile: AthleteProfileInput
-): Record<BandableMetricId, MetricBandConfig> {
+): Record<TargetMetricId, TargetConfig> {
   const targets = SPORT_TARGETS[sportType] ?? SPORT_TARGETS.StandUpPaddling;
   const scale = FITNESS_SCALE[profile.fitnessLevel] ?? 1;
-  const age = ageFromBirthYear(profile.birthYear);
-  const maxHr = estimatedMaxHr(age);
 
   // Gender nudges power slightly; SPM/pace stay sport-led.
   const genderPower =
@@ -94,27 +84,15 @@ export function buildDefaultBands(
   const paceMid = targets.paceSec / scale;
   const powerMid = targets.power * scale * genderPower;
 
-  const hrGreenLo = Math.round(maxHr * 0.6);
-  const hrGreenHi = Math.round(maxHr * 0.8);
-  const hrYellowLo = Math.round(maxHr * 0.5);
-  const hrYellowHi = Math.round(maxHr * 0.9);
-
-  const out = {} as Record<BandableMetricId, MetricBandConfig>;
-  for (const id of BANDABLE_METRIC_IDS) {
-    out[id] = emptyBandConfig();
+  const out = {} as Record<TargetMetricId, TargetConfig>;
+  for (const id of TARGET_METRIC_IDS) {
+    if (id === 'spm') out[id] = targetAround(spmMid, 4, 4);
+    else if (id === 'pace' || id === 'avgPace') out[id] = targetAround(paceMid, 10, 10);
+    else out[id] = targetAround(powerMid, powerMid * 0.12, powerMid * 0.13);
   }
-
-  out.spm = enabledBand(rangeAround(spmMid, 4, 8));
-  out.pace = enabledBand(rangeAround(paceMid, 10, 20));
-  out.avgPace = enabledBand(rangeAround(paceMid, 10, 20));
-  out.power = enabledBand(rangeAround(powerMid, powerMid * 0.12, powerMid * 0.25));
-  out.avgPower = enabledBand(rangeAround(powerMid, powerMid * 0.12, powerMid * 0.25));
-  out.heartRate = enabledBand({
-    greenLo: hrGreenLo,
-    greenHi: hrGreenHi,
-    yellowLo: hrYellowLo,
-    yellowHi: hrYellowHi,
-  });
-
   return out;
+}
+
+export function buildDefaultHrZones(): HrZonesConfig {
+  return defaultHrZonesConfig();
 }

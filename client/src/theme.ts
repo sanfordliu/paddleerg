@@ -1,12 +1,35 @@
 import { MD3DarkTheme, type MD3Theme } from 'react-native-paper';
 
-/** App-specific accents not in MD3 (Strava brand, live indicator, band tints). */
+/** App-specific accents not in MD3 (Strava brand, live indicator, zone tints). */
 export const accents = {
   strava: '#fc4c02',
   live: '#3dd68c',
-  bandGreen: '#143222',
-  bandYellow: '#3d3214',
-  bandRed: '#3d1418',
+  /** Heart-rate intensity zones: dark tile tints that keep light text readable. */
+  zone1: '#262e38',
+  zone2: '#12305a',
+  zone3: '#143a24',
+  zone4: '#4a2c0c',
+  zone5: '#4d1418',
+  /** Directional target tints. */
+  targetIn: '#143a24',
+  targetUnderNear: '#163a5c',
+  targetUnderFar: '#0e2a6b',
+  targetOverNear: '#4a2c0c',
+  targetOverFar: '#4d1418',
+} as const;
+
+/** Bright swatch colors for legends (settings), matching the tile tints. */
+export const zoneSwatches = {
+  zone1: '#8b95a1',
+  zone2: '#4da3ff',
+  zone3: '#2ea043',
+  zone4: '#f0883e',
+  zone5: '#e5484d',
+  targetUnderFar: '#2f6fdb',
+  targetUnderNear: '#7cc0ff',
+  targetIn: '#2ea043',
+  targetOverNear: '#f0883e',
+  targetOverFar: '#e5484d',
 } as const;
 
 export const space = {

@@ -38,6 +38,7 @@ export async function uploadActivity(options: {
   tcx: string;
   name: string;
   sportType: string;
+  description?: string;
   externalId?: string;
 }): Promise<{ id: number; status: string; activity_id: number | null }> {
   const form = new FormData();
@@ -47,6 +48,8 @@ export async function uploadActivity(options: {
   form.append('name', options.name);
   form.append('sport_type', options.sportType);
   form.append('trainer', '1');
+  const description = options.description?.trim();
+  if (description) form.append('description', description);
   if (options.externalId) form.append('external_id', options.externalId);
 
   const res = await fetch('https://www.strava.com/api/v3/uploads', {

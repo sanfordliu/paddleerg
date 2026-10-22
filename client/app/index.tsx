@@ -8,7 +8,6 @@ import { MetricGrid } from '@/src/components/MetricGrid';
 import { Notice } from '@/src/components/Notice';
 import { ShareWorkout } from '@/src/components/ShareWorkout';
 import { WorkoutTypeSelect } from '@/src/components/WorkoutTypeSelect';
-import { useLayoutStore } from '@/src/store/layoutStore';
 import { useStravaStore } from '@/src/store/stravaStore';
 import { useWorkoutStore } from '@/src/store/workoutStore';
 import { space } from '@/src/theme';
@@ -25,9 +24,6 @@ export default function WorkoutScreen() {
   const startWorkout = useWorkoutStore((s) => s.startWorkout);
   const stopWorkout = useWorkoutStore((s) => s.stopWorkout);
   const clearSaved = useWorkoutStore((s) => s.clearSaved);
-
-  const editing = useLayoutStore((s) => s.editing);
-  const setEditing = useLayoutStore((s) => s.setEditing);
 
   const hydrate = useStravaStore((s) => s.hydrate);
   const beginAutoReconnect = useWorkoutStore((s) => s.beginAutoReconnect);
@@ -101,14 +97,6 @@ export default function WorkoutScreen() {
                 label={hrReconnecting ? 'Choose HR' : 'Connect HR'}
               />
             ) : null}
-            <IconButton
-              icon={editing ? 'check' : 'pencil-outline'}
-              mode={editing ? 'contained' : 'contained-tonal'}
-              containerColor={editing ? theme.colors.tertiary : undefined}
-              iconColor={editing ? theme.colors.onTertiary : theme.colors.onSurface}
-              accessibilityLabel={editing ? 'Done editing' : 'Edit tiles'}
-              onPress={() => setEditing(!editing)}
-            />
             <IconButton
               icon="cog-outline"
               mode="contained-tonal"
