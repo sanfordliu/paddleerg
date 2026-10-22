@@ -1,6 +1,6 @@
 # paddleerg
 
-Companion app for the **Whipr** paddle erg. Connect over Bluetooth (FTMS), watch live metrics on a customizable tile board, save a session, and upload it to **Strava**.
+Companion app for the **Whipr** paddle erg. Connect over Bluetooth (FTMS) and optionally a BLE heart-rate strap, watch live metrics on a customizable tile board, save a session, and upload it to **Strava**.
 
 Monorepo:
 

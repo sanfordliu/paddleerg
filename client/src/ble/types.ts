@@ -74,3 +74,15 @@ export interface BleAdapter {
   isLinkConnected(): boolean;
   setConnectionLostHandler(handler: ConnectionLostHandler | null): void;
 }
+
+/** Separate BLE session for a Heart Rate Service monitor (strap, etc.). */
+export interface HrBleAdapter {
+  isAvailable(): boolean;
+  requestHeartRateDevice(): Promise<BleDeviceInfo>;
+  disconnect(): Promise<void>;
+  startNotifications(onBpm: (bpm: number) => void): Promise<void>;
+  stopNotifications(): Promise<void>;
+  getConnectedDevice(): BleDeviceInfo | null;
+  isLinkConnected(): boolean;
+  setConnectionLostHandler(handler: ConnectionLostHandler | null): void;
+}

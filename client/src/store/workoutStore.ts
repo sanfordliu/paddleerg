@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getBleAdapter } from '@/src/ble/adapter';
+import { getBleAdapter, getHrBleAdapter } from '@/src/ble/adapter';
 import { parseFtmsNotification, bytesToHex } from '@/src/ble/ftms';
 import type {
   BleDeviceInfo,
@@ -31,6 +31,10 @@ interface WorkoutSummary {
 interface WorkoutState {
   connection: ConnectionState;
   device: BleDeviceInfo | null;
+  hrConnection: ConnectionState;
+  hrDevice: BleDeviceInfo | null;
+  /** Latest BPM from a dedicated HR strap; wins over FTMS-embedded HR. */
+  hrBpm: number | null;
   error: string | null;
   metrics: LiveMetrics;
   phase: WorkoutPhase;
@@ -41,9 +45,11 @@ interface WorkoutState {
   lastSavedSummary: WorkoutSummary | null;
 
   chooseFtmsDevice: () => Promise<void>;
+  chooseHrDevice: () => Promise<void>;
   /** After page load or drop: keep trying the last permitted Whipr. */
   beginAutoReconnect: () => void;
   disconnect: () => Promise<void>;
+  disconnectHr: () => Promise<void>;
   startWorkout: () => void;
   stopWorkout: () => void;
   clearSaved: () => void;
@@ -56,6 +62,15 @@ type Get = () => WorkoutState;
 
 function clearConnectionHandler() {
   getBleAdapter().setConnectionLostHandler(null);
+}
+
+function clearHrConnectionHandler() {
+  getHrBleAdapter().setConnectionLostHandler(null);
+}
+
+function metricsWithHr(base: LiveMetrics, hrBpm: number | null, hrConnected: boolean): LiveMetrics {
+  if (hrConnected && hrBpm != null) return { ...base, heartRateBpm: hrBpm };
+  return base;
 }
 
 function finishActiveWorkout(get: Get): Partial<WorkoutState> {
@@ -83,7 +98,7 @@ function beginAutoReconnectInternal(set: Set, get: Get) {
       connection: 'disconnected',
       device: remembered,
       error: remembered
-        ? `Previously connected to ${remembered.name || 'your Whipr'}. Tap Connect to choose it again (browsers cannot reconnect after a refresh).`
+        ? `Previously connected to ${remembered.name || 'your Whipr'}. Tap Connect ERG to choose it again (browsers cannot reconnect after a refresh).`
         : null,
     });
     return;
@@ -125,6 +140,21 @@ function onConnectionLost(set: Set, get: Get) {
   beginAutoReconnectInternal(set, get);
 }
 
+function onHrConnectionLost(set: Set, get: Get) {
+  clearHrConnectionHandler();
+  const { metrics, hrBpm } = get();
+  const next = { ...metrics };
+  if (hrBpm != null && next.heartRateBpm === hrBpm) {
+    delete next.heartRateBpm;
+  }
+  set({
+    hrConnection: 'disconnected',
+    hrDevice: null,
+    hrBpm: null,
+    metrics: next,
+  });
+}
+
 async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
   const adapter = getBleAdapter();
   adapter.stopAutoReconnect();
@@ -143,7 +173,12 @@ async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
     const hex = event.hex ?? bytesToHex(event.value);
     const receivedAt = event.receivedAt ?? Date.now();
     set((state) => {
-      const metrics = parsed ? { ...state.metrics, ...parsed } : state.metrics;
+      const merged = parsed ? { ...state.metrics, ...parsed } : state.metrics;
+      const metrics = metricsWithHr(
+        merged,
+        state.hrBpm,
+        state.hrConnection === 'connected'
+      );
       let samples = state.samples;
       if (state.phase === 'active' && parsed) {
         const last = samples[samples.length - 1];
@@ -165,6 +200,29 @@ async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
   set({ connection: 'connected', device, error: null });
 }
 
+async function afterHrConnected(set: Set, get: Get, device: BleDeviceInfo) {
+  const adapter = getHrBleAdapter();
+  set({ hrConnection: 'connecting', hrDevice: device, error: null });
+
+  await adapter.startNotifications((bpm) => {
+    set((state) => {
+      const metrics = { ...state.metrics, heartRateBpm: bpm };
+      let samples = state.samples;
+      if (state.phase === 'active') {
+        const last = samples[samples.length - 1];
+        const now = Date.now();
+        if (!last || now - last.t >= SAMPLE_INTERVAL_MS) {
+          samples = [...samples, { t: now, metrics: { ...metrics } }];
+        }
+      }
+      return { hrBpm: bpm, metrics, samples, hrConnection: 'connected' as const };
+    });
+  });
+
+  adapter.setConnectionLostHandler(() => onHrConnectionLost(set, get));
+  set({ hrConnection: 'connected', hrDevice: device, error: null });
+}
+
 function mapConnectError(e: unknown): string | null {
   const message = e instanceof Error ? e.message : String(e);
   const name = e && typeof e === 'object' && 'name' in e ? String((e as { name: string }).name) : '';
@@ -175,6 +233,9 @@ function mapConnectError(e: unknown): string | null {
 export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   connection: 'disconnected',
   device: null,
+  hrConnection: 'disconnected',
+  hrDevice: null,
+  hrBpm: null,
   error: null,
   metrics: {},
   phase: 'idle',
@@ -217,6 +278,33 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     }
   },
 
+  async chooseHrDevice() {
+    const adapter = getHrBleAdapter();
+    if (!adapter.isAvailable()) {
+      set({
+        error:
+          'Bluetooth not available. On Mac use Chrome or Edge. On iOS/Android a native build is required.',
+      });
+      return;
+    }
+    try {
+      set({ hrConnection: 'connecting', error: null });
+      const device = await adapter.requestHeartRateDevice();
+      await afterHrConnected(set, get, device);
+    } catch (e) {
+      clearHrConnectionHandler();
+      try {
+        await adapter.disconnect();
+      } catch {}
+      set({
+        hrConnection: 'disconnected',
+        hrDevice: null,
+        hrBpm: null,
+        error: mapConnectError(e),
+      });
+    }
+  },
+
   beginAutoReconnect() {
     const { connection } = get();
     if (connection === 'connected' || connection === 'connecting') return;
@@ -237,20 +325,49 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     try {
       await getBleAdapter().disconnect();
     } catch {}
+    const { hrConnection, hrBpm } = get();
     set({
       connection: 'disconnected',
       device: null,
       phase: 'idle',
       startedAt: null,
-      metrics: {},
+      metrics:
+        hrConnection === 'connected' && hrBpm != null ? { heartRateBpm: hrBpm } : {},
       gattServices: [],
       notificationLog: [],
       error: null,
     });
   },
 
+  async disconnectHr() {
+    clearHrConnectionHandler();
+    try {
+      await getHrBleAdapter().disconnect();
+    } catch {}
+    const { metrics, hrBpm } = get();
+    const next = { ...metrics };
+    if (hrBpm != null && next.heartRateBpm === hrBpm) {
+      delete next.heartRateBpm;
+    }
+    set({
+      hrConnection: 'disconnected',
+      hrDevice: null,
+      hrBpm: null,
+      metrics: next,
+      error: null,
+    });
+  },
+
   startWorkout() {
-    set({ phase: 'active', startedAt: Date.now(), samples: [], metrics: {}, lastSavedSummary: null });
+    const { hrConnection, hrBpm } = get();
+    set({
+      phase: 'active',
+      startedAt: Date.now(),
+      samples: [],
+      metrics:
+        hrConnection === 'connected' && hrBpm != null ? { heartRateBpm: hrBpm } : {},
+      lastSavedSummary: null,
+    });
   },
 
   stopWorkout() {

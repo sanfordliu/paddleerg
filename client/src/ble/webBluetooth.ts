@@ -224,7 +224,7 @@ export function createWebBluetoothAdapter(): BleAdapter {
       }
       stopAutoReconnectInternal();
       const btDevice = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
+        filters: [{ services: [FTMS_SERVICE] }],
         optionalServices: [FTMS_SERVICE],
       });
       return finishConnect(btDevice);

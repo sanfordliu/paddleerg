@@ -21,6 +21,7 @@ interface Props {
 export function ShareWorkout({ workout, onDismiss }: Props) {
   const theme = useTheme();
   const tokens = useStravaStore((s) => s.tokens);
+  const sportType = useStravaStore((s) => s.sportType);
   const status = useStravaStore((s) => s.status);
   const clearStatus = useStravaStore((s) => s.clearStatus);
   const shareWorkout = useStravaStore((s) => s.shareWorkout);
@@ -38,6 +39,7 @@ export function ShareWorkout({ workout, onDismiss }: Props) {
       endedAt: workout.endedAt,
       metrics: workout.metrics,
       samples: workout.samples,
+      sportType,
     }).catch(() => {});
   };
 

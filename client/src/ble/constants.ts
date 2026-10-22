@@ -3,10 +3,15 @@ export const FITNESS_MACHINE_FEATURE = '00002acc-0000-1000-8000-00805f9b34fb';
 export const ROWER_DATA = '00002ad1-0000-1000-8000-00805f9b34fb';
 export const CROSS_TRAINER_DATA = '00002ace-0000-1000-8000-00805f9b34fb';
 
+/** Bluetooth SIG Heart Rate Profile */
+export const HEART_RATE_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
+export const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
+
 export const KNOWN_CHARACTERISTICS: Record<string, string> = {
   [FITNESS_MACHINE_FEATURE]: 'Fitness Machine Feature',
   [ROWER_DATA]: 'Rower Data',
   [CROSS_TRAINER_DATA]: 'Cross Trainer Data',
+  [HEART_RATE_MEASUREMENT]: 'Heart Rate Measurement',
 };
 
 export function normalizeUuid(uuid: string): string {

@@ -19,6 +19,12 @@ import type { LiveMetrics, WorkoutSample } from '@/src/ble/types';
 
 const TOKEN_KEY = 'paddleerg-strava-tokens';
 const STATE_KEY = 'paddleerg-strava-state';
+const SPORT_KEY = 'paddleerg-sport-type';
+const DEFAULT_SPORT: StravaSportType = 'StandUpPaddling';
+
+function isSportType(value: unknown): value is StravaSportType {
+  return STRAVA_SPORT_OPTIONS.some((s) => s.value === value);
+}
 
 async function saveTokens(tokens: StravaTokens | null) {
   const value = tokens ? JSON.stringify(tokens) : null;
@@ -44,6 +50,26 @@ async function loadTokens(): Promise<StravaTokens | null> {
   }
 }
 
+async function saveSportType(sport: StravaSportType) {
+  if (Platform.OS === 'web') {
+    localStorage.setItem(SPORT_KEY, sport);
+    return;
+  }
+  await SecureStore.setItemAsync(SPORT_KEY, sport);
+}
+
+async function loadSportType(): Promise<StravaSportType> {
+  try {
+    const raw =
+      Platform.OS === 'web'
+        ? localStorage.getItem(SPORT_KEY)
+        : await SecureStore.getItemAsync(SPORT_KEY);
+    return isSportType(raw) ? raw : DEFAULT_SPORT;
+  } catch {
+    return DEFAULT_SPORT;
+  }
+}
+
 interface StravaState {
   tokens: StravaTokens | null;
   sportType: StravaSportType;
@@ -61,6 +87,7 @@ interface StravaState {
     endedAt: number;
     metrics: LiveMetrics;
     samples: WorkoutSample[];
+    sportType?: StravaSportType;
   }) => Promise<number | null>;
 }
 
@@ -81,15 +108,17 @@ async function ensureAccessToken(
 
 export const useStravaStore = create<StravaState>((set, get) => ({
   tokens: null,
-  sportType: 'StandUpPaddling',
+  sportType: DEFAULT_SPORT,
   status: null,
 
   async hydrate() {
-    set({ tokens: await loadTokens() });
+    const [tokens, sportType] = await Promise.all([loadTokens(), loadSportType()]);
+    set({ tokens, sportType });
   },
 
   setSportType(sport) {
     set({ sportType: sport });
+    void saveSportType(sport);
   },
 
   beginOAuth() {
@@ -131,8 +160,14 @@ export const useStravaStore = create<StravaState>((set, get) => ({
     set({ status: 'Uploading to Strava…' });
     try {
       const accessToken = await ensureAccessToken(get, set);
+      const sportType = workout.sportType ?? get().sportType;
+      const sportLabel =
+        STRAVA_SPORT_OPTIONS.find((s) => s.value === sportType)?.label ?? sportType;
+      const name = workout.name.includes(sportLabel)
+        ? workout.name
+        : `${sportLabel} · ${workout.name}`;
       const tcx = buildTcx({
-        name: workout.name,
+        name,
         sport: 'Other',
         startedAt: workout.startedAt,
         endedAt: workout.endedAt,
@@ -142,8 +177,8 @@ export const useStravaStore = create<StravaState>((set, get) => ({
       const upload = await uploadActivity({
         accessToken,
         tcx,
-        name: workout.name,
-        sportType: get().sportType,
+        name,
+        sportType,
         externalId: `paddleerg-${workout.startedAt}`,
       });
       const polled = await pollUpload(accessToken, upload.id);

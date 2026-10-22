@@ -7,6 +7,7 @@ import { ConnectButton } from '@/src/components/ConnectButton';
 import { MetricGrid } from '@/src/components/MetricGrid';
 import { Notice } from '@/src/components/Notice';
 import { ShareWorkout } from '@/src/components/ShareWorkout';
+import { WorkoutTypeSelect } from '@/src/components/WorkoutTypeSelect';
 import { useLayoutStore } from '@/src/store/layoutStore';
 import { useStravaStore } from '@/src/store/stravaStore';
 import { useWorkoutStore } from '@/src/store/workoutStore';
@@ -15,6 +16,7 @@ import { space } from '@/src/theme';
 export default function WorkoutScreen() {
   const theme = useTheme();
   const connection = useWorkoutStore((s) => s.connection);
+  const hrConnection = useWorkoutStore((s) => s.hrConnection);
   const error = useWorkoutStore((s) => s.error);
   const clearError = useWorkoutStore((s) => s.clearError);
   const metrics = useWorkoutStore((s) => s.metrics);
@@ -32,6 +34,8 @@ export default function WorkoutScreen() {
 
   const connected = connection === 'connected';
   const reconnecting = connection === 'reconnecting';
+  const hrConnected = hrConnection === 'connected';
+  const hrReconnecting = hrConnection === 'reconnecting';
 
   useEffect(() => {
     void hydrate();
@@ -64,6 +68,7 @@ export default function WorkoutScreen() {
           </View>
 
           <View style={styles.headerActions}>
+            {connected ? <WorkoutTypeSelect /> : null}
             {connected && phase !== 'active' ? (
               <IconButton
                 icon="play"
@@ -85,7 +90,16 @@ export default function WorkoutScreen() {
               />
             ) : null}
             {!connected ? (
-              <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} />
+              <ConnectButton
+                kind="erg"
+                label={reconnecting ? 'Choose ERG' : 'Connect ERG'}
+              />
+            ) : null}
+            {!hrConnected ? (
+              <ConnectButton
+                kind="hr"
+                label={hrReconnecting ? 'Choose HR' : 'Connect HR'}
+              />
             ) : null}
             <IconButton
               icon={editing ? 'check' : 'pencil-outline'}

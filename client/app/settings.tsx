@@ -1,21 +1,13 @@
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import {
-  Button,
-  Divider,
-  List,
-  RadioButton,
-  Text,
-  TouchableRipple,
-  useTheme,
-} from 'react-native-paper';
+import { Button, Divider, List, Text, useTheme } from 'react-native-paper';
 import { ConnectButton } from '@/src/components/ConnectButton';
 import { DebugSection } from '@/src/components/DebugSection';
 import { Notice } from '@/src/components/Notice';
 import { ScreenPanel } from '@/src/components/ScreenPanel';
 import { StravaConnectButton } from '@/src/components/StravaConnectButton';
-import { STRAVA_SPORT_OPTIONS, useStravaStore } from '@/src/store/stravaStore';
+import { useStravaStore } from '@/src/store/stravaStore';
 import { useLayoutStore } from '@/src/store/layoutStore';
 import { useWorkoutStore } from '@/src/store/workoutStore';
 import { space } from '@/src/theme';
@@ -31,22 +23,40 @@ function SectionTitle({ children }: { children: string }) {
   );
 }
 
+function ergStatusTitle(
+  connected: boolean,
+  reconnecting: boolean,
+  name: string | null | undefined
+): string {
+  if (connected) return `ERG connected to ${name || 'device'}`;
+  if (reconnecting) return `ERG reconnecting${name ? ` to ${name}` : ''}…`;
+  return 'ERG not connected';
+}
+
+function hrStatusTitle(connected: boolean, name: string | null | undefined): string {
+  if (connected) return `HR connected to ${name || 'monitor'}`;
+  return 'HR not connected';
+}
+
 export default function SettingsScreen() {
   const theme = useTheme();
   const tokens = useStravaStore((s) => s.tokens);
-  const sportType = useStravaStore((s) => s.sportType);
   const hydrate = useStravaStore((s) => s.hydrate);
   const logout = useStravaStore((s) => s.logout);
-  const setSportType = useStravaStore((s) => s.setSportType);
   const resetLayout = useLayoutStore((s) => s.resetLayout);
 
   const connection = useWorkoutStore((s) => s.connection);
   const device = useWorkoutStore((s) => s.device);
+  const hrConnection = useWorkoutStore((s) => s.hrConnection);
+  const hrDevice = useWorkoutStore((s) => s.hrDevice);
   const error = useWorkoutStore((s) => s.error);
   const clearError = useWorkoutStore((s) => s.clearError);
   const disconnect = useWorkoutStore((s) => s.disconnect);
+  const disconnectHr = useWorkoutStore((s) => s.disconnectHr);
   const connected = connection === 'connected';
   const reconnecting = connection === 'reconnecting';
+  const hrConnected = hrConnection === 'connected';
+  const hrBusy = hrConnection === 'connecting';
 
   useEffect(() => {
     void hydrate();
@@ -60,22 +70,29 @@ export default function SettingsScreen() {
   return (
     <ScreenPanel title="Settings" onClose={close} closeAccessibilityLabel="Close settings">
       <SectionTitle>Bluetooth</SectionTitle>
+      <List.Item title={ergStatusTitle(connected, reconnecting, device?.name)} />
       <List.Item
-        title={
-          connected
-            ? `Connected to ${device?.name || 'device'}`
-            : reconnecting
-              ? `Reconnecting${device?.name ? ` to ${device.name}` : ''}…`
-              : 'Not connected'
-        }
+        title={hrStatusTitle(hrConnected, hrDevice?.name)}
+        description="BLE heart-rate straps (Polar, etc.). Apple Watch is not supported on web."
       />
       <View style={styles.actions}>
         {connected || reconnecting ? (
           <Button mode="outlined" textColor={theme.colors.error} onPress={() => void disconnect()}>
-            Disconnect
+            Disconnect ERG
           </Button>
         ) : null}
-        {!connected ? <ConnectButton label={reconnecting ? 'Choose Device' : 'Connect'} /> : null}
+        {hrConnected || hrBusy ? (
+          <Button
+            mode="outlined"
+            textColor={theme.colors.error}
+            onPress={() => void disconnectHr()}>
+            Disconnect HR
+          </Button>
+        ) : null}
+        {!connected ? (
+          <ConnectButton kind="erg" label={reconnecting ? 'Choose ERG' : 'Connect ERG'} />
+        ) : null}
+        {!hrConnected && !hrBusy ? <ConnectButton kind="hr" /> : null}
         {error ? <Notice tone="error" message={error} onDismiss={clearError} /> : null}
       </View>
 
@@ -101,36 +118,9 @@ export default function SettingsScreen() {
 
       <Divider style={styles.divider} />
 
-      <SectionTitle>Sport type</SectionTitle>
-      <RadioButton.Group
-        onValueChange={(value) => setSportType(value as typeof sportType)}
-        value={sportType}>
-        <View style={styles.sportList}>
-          {STRAVA_SPORT_OPTIONS.map((sport) => {
-            const selected = sportType === sport.value;
-            return (
-              <TouchableRipple
-                key={sport.value}
-                onPress={() => setSportType(sport.value)}
-                style={styles.sportRow}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                accessibilityLabel={sport.label}>
-                <View style={styles.sportRowInner}>
-                  <RadioButton value={sport.value} status={selected ? 'checked' : 'unchecked'} />
-                  <Text variant="bodyLarge">{sport.label}</Text>
-                </View>
-              </TouchableRipple>
-            );
-          })}
-        </View>
-      </RadioButton.Group>
-
-      <Divider style={styles.divider} />
-
       <SectionTitle>Dashboard</SectionTitle>
       <View style={styles.actions}>
-        <Button mode="outlined" onPress={resetLayout}>
+        <Button mode="outlined" textColor={theme.colors.onSurface} onPress={resetLayout}>
           Reset metric tiles
         </Button>
       </View>
@@ -154,21 +144,6 @@ const styles = StyleSheet.create({
     gap: space.sm,
     marginBottom: space.sm,
     alignItems: 'flex-start',
-  },
-  sportList: {
-    paddingHorizontal: space.sm,
-    gap: 0,
-  },
-  sportRow: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-  },
-  sportRowInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingRight: space.md,
-    gap: 4,
   },
   divider: {
     marginTop: space.md,

@@ -1,6 +1,15 @@
 # Whipr BLE protocol notes
 
-## Expected profile
+## Two independent BLE links (web)
+
+| Button | Filter | Profile |
+|--------|--------|---------|
+| **Connect ERG** | Fitness Machine Service `0x1826` | FTMS (Whipr) |
+| **Connect HR** | Heart Rate Service `0x180D` | BLE HR straps (Polar, etc.) |
+
+Apple Watch / HealthKit is **not** available in the browser. Dedicated HR BPM overrides FTMS-embedded heart rate when both are present.
+
+## Expected ERG profile
 
 Whipr’s crowdfunding materials state the base unit uses **FTMS** (Bluetooth Fitness Machine Service):
 
@@ -13,15 +22,25 @@ Whipr’s crowdfunding materials state the base unit uses **FTMS** (Bluetooth Fi
 | Fitness Machine Control Point | `0x2AD9` |
 | Fitness Machine Status | `0x2ADA` |
 
-Advertising name is often a variant of **Whipr**.
+Advertising name is often a variant of **Whipr**. The chooser only lists devices that **advertise** `0x1826`.
+
+## Heart rate (optional strap)
+
+| Item | UUID |
+|------|------|
+| Heart Rate Service | `0x180D` |
+| Heart Rate Measurement (notify) | `0x2A37` |
+
+See `src/ble/heartRate.ts`.
 
 ## How to verify on your unit
 
 1. Power on the Whipr (fresh batteries help).
 2. Open paddleerg in **Chrome** on Mac (`npm run web`).
-3. Open **BLE Explorer** (bluetooth icon on the workout screen, or Settings) → **Connect**.
+3. Tap **Connect ERG** (or Settings → Connect ERG).
 4. Confirm service `1826` appears and notifications arrive while paddling.
 5. Prefer **Rower Data** (`2AD1`) payloads. If only Cross Trainer Data (`2ACE`) appears, note that in this file and extend the parser.
+6. Optionally tap **Connect HR** and pair a BLE heart-rate strap.
 
 ## Rower Data flags (UINT16, little-endian)
 
