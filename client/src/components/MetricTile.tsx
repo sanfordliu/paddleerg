@@ -3,6 +3,9 @@ import { LayoutChangeEvent, Platform, StyleSheet, View, useWindowDimensions } fr
 import { Icon, IconButton, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import type { MetricDef } from '@/src/metrics/catalog';
 import type { LiveMetrics } from '@/src/ble/types';
+import { evaluateBand, isBandableMetricId, type BandColor } from '@/src/metrics/bands';
+import { useAthleteStore } from '@/src/store/athleteStore';
+import { accents } from '@/src/theme';
 
 interface Props {
   def: MetricDef;
@@ -13,8 +16,17 @@ interface Props {
   controlSize?: number;
   onLongPress?: () => void;
   onDelete?: () => void;
+  /** When not editing: open band settings (bandable metrics only). */
+  onPress?: () => void;
   /** Web pointer-drag: begin reorder from this tile (not the delete control). */
   onDragPointerDown?: (e: { clientX: number; clientY: number; pointerId: number }) => void;
+}
+
+function bandBackground(band: BandColor | null, surface: string): string {
+  if (band === 'green') return accents.bandGreen;
+  if (band === 'yellow') return accents.bandYellow;
+  if (band === 'red') return accents.bandRed;
+  return surface;
 }
 
 function chromeTypeScale(width: number, height: number) {
@@ -67,11 +79,17 @@ export function MetricTile({
   controlSize: controlSizeProp,
   onLongPress,
   onDelete,
+  onPress,
   onDragPointerDown,
 }: Props) {
   const theme = useTheme();
   const { width, height } = useWindowDimensions();
-  const display = def.format(def.getValue(metrics));
+  const rawValue = def.getValue(metrics);
+  const display = def.format(rawValue);
+  const bandConfig = useAthleteStore((s) =>
+    isBandableMetricId(def.id) ? s.bands[def.id] : undefined
+  );
+  const band = editing ? null : evaluateBand(rawValue, bandConfig);
   const chrome = chromeTypeScale(width, height);
   const controlSize = controlSizeProp ?? chrome.control;
   const [valueBox, setValueBox] = useState({ width: 0, height: 0 });
@@ -96,7 +114,7 @@ export function MetricTile({
         styles.tile,
         editing && styles.tileEditing,
         {
-          backgroundColor: theme.colors.surface,
+          backgroundColor: bandBackground(band, theme.colors.surface),
           borderColor,
           borderStyle: editing ? 'dashed' : 'solid',
           borderWidth: dropTarget ? 2 : 1,
@@ -215,9 +233,11 @@ export function MetricTile({
 
   return (
     <TouchableRipple
+      onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      style={styles.pressable}>
+      style={styles.pressable}
+      accessibilityHint={onPress ? 'Opens band thresholds' : undefined}>
       {tileBody}
     </TouchableRipple>
   );

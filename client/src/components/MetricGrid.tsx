@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, List, Portal, Text, useTheme } from 'react-native-paper';
+import { BandEditor } from '@/src/components/BandEditor';
 import { MetricTile } from '@/src/components/MetricTile';
 import { ScreenOverlay } from '@/src/components/ScreenOverlay';
+import { isBandableMetricId, type BandableMetricId } from '@/src/metrics/bands';
 import { METRIC_CATALOG, getMetricDef, type MetricId } from '@/src/metrics/catalog';
 import { MAX_TILES, useLayoutStore } from '@/src/store/layoutStore';
 import type { LiveMetrics } from '@/src/ble/types';
@@ -71,6 +73,7 @@ export function MetricGrid({ metrics }: Props) {
     h: number;
   } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [bandEditId, setBandEditId] = useState<BandableMetricId | null>(null);
 
   const draggingIdRef = useRef<MetricId | null>(null);
   const lastSwapTargetRef = useRef<MetricId | null>(null);
@@ -220,6 +223,9 @@ export function MetricGrid({ metrics }: Props) {
                     controlSize={controlSize}
                     onLongPress={() => setEditing(true)}
                     onDelete={draggingId ? undefined : () => removeTile(id)}
+                    onPress={
+                      isBandableMetricId(id) ? () => setBandEditId(id) : undefined
+                    }
                     onDragPointerDown={(e) => startDrag(id, e)}
                   />
                 </View>
@@ -298,6 +304,12 @@ export function MetricGrid({ metrics }: Props) {
           ))
         )}
       </ScreenOverlay>
+
+      <BandEditor
+        metricId={bandEditId}
+        visible={bandEditId != null}
+        onClose={() => setBandEditId(null)}
+      />
     </View>
   );
 }

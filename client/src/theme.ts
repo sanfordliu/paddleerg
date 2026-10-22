@@ -1,9 +1,12 @@
 import { MD3DarkTheme, type MD3Theme } from 'react-native-paper';
 
-/** App-specific accents not in MD3 (Strava brand, live indicator). */
+/** App-specific accents not in MD3 (Strava brand, live indicator, band tints). */
 export const accents = {
   strava: '#fc4c02',
   live: '#3dd68c',
+  bandGreen: '#143222',
+  bandYellow: '#3d3214',
+  bandRed: '#3d1418',
 } as const;
 
 export const space = {
