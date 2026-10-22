@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native';
-import { HelperText, Icon, IconButton, useTheme } from 'react-native-paper';
+import { Icon, IconButton, Text, useTheme, type MD3Theme } from 'react-native-paper';
+import { space } from '@/src/theme';
 
 export type NoticeTone = 'error' | 'warning' | 'info' | 'success';
 
@@ -9,35 +10,58 @@ interface Props {
   onDismiss?: () => void;
 }
 
-/**
- * MD3 supporting / helper text for inline notices.
- * Prefer HelperText over Banner (Banner is a full-width action strip).
- */
-export function Notice({ tone = 'error', message, onDismiss }: Props) {
+function toneColors(
+  tone: NoticeTone,
+  theme: MD3Theme
+): { bg: string; fg: string; icon: string } {
+  switch (tone) {
+    case 'error':
+      return {
+        bg: theme.colors.errorContainer,
+        fg: theme.colors.onErrorContainer,
+        icon: 'alert-circle-outline',
+      };
+    case 'warning':
+      return {
+        bg: theme.colors.secondaryContainer,
+        fg: theme.colors.onSecondaryContainer,
+        icon: 'alert-outline',
+      };
+    case 'success':
+      return {
+        bg: theme.colors.tertiaryContainer,
+        fg: theme.colors.onTertiaryContainer,
+        icon: 'check-circle-outline',
+      };
+    default:
+      return {
+        bg: theme.colors.surfaceVariant,
+        fg: theme.colors.onSurfaceVariant,
+        icon: 'information-outline',
+      };
+  }
+}
+
+/** Compact MD3 status banner for feedback inside panels and modals. */
+export function Notice({ tone = 'info', message, onDismiss }: Props) {
   const theme = useTheme();
   if (!message) return null;
 
-  const isError = tone === 'error' || tone === 'warning';
-  const color = isError ? theme.colors.error : theme.colors.onSurfaceVariant;
+  const colors = toneColors(tone, theme);
 
   return (
-    <View style={styles.row}>
-      <Icon
-        source={isError ? 'alert-circle-outline' : 'information-outline'}
-        size={18}
-        color={color}
-      />
-      <HelperText
-        type={isError ? 'error' : 'info'}
-        visible
-        padding="none"
-        style={[styles.text, { color }]}>
+    <View
+      style={[styles.wrap, { backgroundColor: colors.bg, borderRadius: theme.roundness }]}
+      accessibilityRole="alert">
+      <Icon source={colors.icon} size={20} color={colors.fg} />
+      <Text variant="bodyMedium" style={[styles.text, { color: colors.fg }]}>
         {message}
-      </HelperText>
+      </Text>
       {onDismiss ? (
         <IconButton
           icon="close"
-          size={16}
+          size={18}
+          iconColor={colors.fg}
           onPress={onDismiss}
           accessibilityLabel="Dismiss"
           style={styles.dismiss}
@@ -48,20 +72,22 @@ export function Notice({ tone = 'error', message, onDismiss }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: {
+  wrap: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
-    paddingVertical: 4,
+    gap: space.sm,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    alignSelf: 'stretch',
   },
   text: {
     flex: 1,
-    marginTop: 0,
-    marginBottom: 0,
-    paddingVertical: 0,
+    lineHeight: 22,
+    paddingTop: 1,
   },
   dismiss: {
     margin: 0,
     marginTop: -6,
+    marginRight: -8,
   },
 });

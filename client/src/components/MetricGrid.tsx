@@ -3,7 +3,7 @@ import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, List, Portal, Text, useTheme } from 'react-native-paper';
 import { BandEditor } from '@/src/components/BandEditor';
 import { MetricTile } from '@/src/components/MetricTile';
-import { ScreenOverlay } from '@/src/components/ScreenOverlay';
+import { AppModal } from '@/src/components/AppModal';
 import { isBandableMetricId, type BandableMetricId } from '@/src/metrics/bands';
 import { METRIC_CATALOG, getMetricDef, type MetricId } from '@/src/metrics/catalog';
 import { MAX_TILES, useLayoutStore } from '@/src/store/layoutStore';
@@ -278,7 +278,7 @@ export function MetricGrid({ metrics }: Props) {
         </Portal>
       ) : null}
 
-      <ScreenOverlay
+      <AppModal
         visible={addOpen}
         title="Add metric"
         onClose={() => setAddOpen(false)}
@@ -303,7 +303,7 @@ export function MetricGrid({ metrics }: Props) {
             />
           ))
         )}
-      </ScreenOverlay>
+      </AppModal>
 
       <BandEditor
         metricId={bandEditId}

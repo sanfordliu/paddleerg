@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Switch, Text, TextInput, useTheme } from 'react-native-paper';
-import { ScreenOverlay } from '@/src/components/ScreenOverlay';
+import { AppModal } from '@/src/components/AppModal';
 import { getMetricDef } from '@/src/metrics/catalog';
 import { buildDefaultBands } from '@/src/metrics/bandDefaults';
 import {
@@ -92,14 +92,14 @@ export function BandEditor({ metricId, visible, onClose }: Props) {
   };
 
   return (
-    <ScreenOverlay
+    <AppModal
       visible={visible}
       title={`${def.label} bands`}
       onClose={onClose}
       closeAccessibilityLabel="Close band settings">
       <Text variant="bodyMedium" style={[styles.hint, { color: theme.colors.onSurfaceVariant }]}>
-        Green = target range, yellow = near miss, red = outside. Leave disabled or clear fields to
-        turn banding off. Values are coaching heuristics, not medical advice.
+        Green = target range, yellow = near miss, red = outside. Turn banding off with the switch.
+        Values are coaching heuristics, not medical advice.
         {unitHint}
       </Text>
 
@@ -110,78 +110,80 @@ export function BandEditor({ metricId, visible, onClose }: Props) {
         <Switch value={enabled} onValueChange={setEnabled} />
       </View>
 
-      <Text variant="labelLarge" style={[styles.section, { color: theme.colors.tertiary }]}>
-        Green (target)
-      </Text>
-      <View style={styles.pair}>
-        <TextInput
-          mode="outlined"
-          label="Low"
-          value={greenLo}
-          onChangeText={setGreenLo}
-          keyboardType="numeric"
-          disabled={!enabled}
-          style={styles.input}
-        />
-        <TextInput
-          mode="outlined"
-          label="High"
-          value={greenHi}
-          onChangeText={setGreenHi}
-          keyboardType="numeric"
-          disabled={!enabled}
-          style={styles.input}
-        />
-      </View>
+      {enabled ? (
+        <>
+          <Text variant="labelLarge" style={[styles.section, { color: theme.colors.tertiary }]}>
+            Green (target)
+          </Text>
+          <View style={styles.pair}>
+            <TextInput
+              mode="outlined"
+              label="Low"
+              value={greenLo}
+              onChangeText={setGreenLo}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+            <TextInput
+              mode="outlined"
+              label="High"
+              value={greenHi}
+              onChangeText={setGreenHi}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+          </View>
 
-      <Text
-        variant="labelLarge"
-        style={[styles.section, { color: theme.colors.onSurfaceVariant }]}>
-        Yellow (near)
-      </Text>
-      <View style={styles.pair}>
-        <TextInput
-          mode="outlined"
-          label="Low"
-          value={yellowLo}
-          onChangeText={setYellowLo}
-          keyboardType="numeric"
-          disabled={!enabled}
-          style={styles.input}
-        />
-        <TextInput
-          mode="outlined"
-          label="High"
-          value={yellowHi}
-          onChangeText={setYellowHi}
-          keyboardType="numeric"
-          disabled={!enabled}
-          style={styles.input}
-        />
-      </View>
+          <Text
+            variant="labelLarge"
+            style={[styles.section, { color: theme.colors.onSurfaceVariant }]}>
+            Yellow (near)
+          </Text>
+          <View style={styles.pair}>
+            <TextInput
+              mode="outlined"
+              label="Low"
+              value={yellowLo}
+              onChangeText={setYellowLo}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+            <TextInput
+              mode="outlined"
+              label="High"
+              value={yellowHi}
+              onChangeText={setYellowHi}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+          </View>
+        </>
+      ) : null}
 
       <View style={styles.actions}>
         <Button mode="outlined" textColor={theme.colors.onSurface} onPress={applyDefaults}>
           Use profile defaults
         </Button>
-        <Button
-          mode="outlined"
-          textColor={theme.colors.error}
-          onPress={() => {
-            setEnabled(false);
-            const e = emptyBandConfig();
-            setGreenLo(numStr(e.greenLo));
-            setGreenHi(numStr(e.greenHi));
-            setYellowLo(numStr(e.yellowLo));
-            setYellowHi(numStr(e.yellowHi));
-          }}>
-          Clear / disable
-        </Button>
+        {enabled ? (
+          <Button
+            mode="outlined"
+            textColor={theme.colors.error}
+            onPress={() => {
+              setEnabled(false);
+              const e = emptyBandConfig();
+              setGreenLo(numStr(e.greenLo));
+              setGreenHi(numStr(e.greenHi));
+              setYellowLo(numStr(e.yellowLo));
+              setYellowHi(numStr(e.yellowHi));
+            }}>
+            Clear / disable
+          </Button>
+        ) : null}
         <Button mode="contained" disabled={!canSave} onPress={save}>
           Save
         </Button>
       </View>
-    </ScreenOverlay>
+    </AppModal>
   );
 }
 

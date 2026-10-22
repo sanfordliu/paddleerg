@@ -57,7 +57,8 @@ export function StravaConnectButton() {
 
 const styles = StyleSheet.create({
   wrap: {
-    alignItems: 'flex-start',
-    gap: space.sm,
+    alignItems: 'stretch',
+    gap: space.md,
+    alignSelf: 'stretch',
   },
 });

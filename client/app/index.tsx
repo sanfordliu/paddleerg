@@ -126,9 +126,11 @@ export default function WorkoutScreen() {
         </View>
 
         {lastSavedSummary ? (
-          <View style={styles.share}>
-            <ShareWorkout workout={lastSavedSummary} onDismiss={clearSaved} />
-          </View>
+          <ShareWorkout
+            visible
+            workout={lastSavedSummary}
+            onDismiss={clearSaved}
+          />
         ) : null}
       </View>
     </SafeAreaView>
@@ -165,5 +167,4 @@ const styles = StyleSheet.create({
     gap: space.xs,
   },
   board: { flex: 1, minHeight: 0 },
-  share: { flexShrink: 0 },
 });
