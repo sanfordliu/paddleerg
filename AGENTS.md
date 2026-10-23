@@ -8,6 +8,7 @@
 npm install
 npm run dev              # client :8081 + server :8788
 npm run typecheck
+npm run test             # Jest + coverage thresholds
 npm run deploy:lightsail # after IAM + terraform.tfvars
 ```
 

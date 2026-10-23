@@ -147,8 +147,11 @@ Open the service URL in Chrome/Edge and connect Strava end-to-end.
 | `npm run server` | Server only (`:8788`) |
 | `npm run lint` | Client lint |
 | `npm run typecheck` | Client + server |
-| `npm run test:ftms` | FTMS parser checks |
+| `npm run test` | Jest with coverage (client + server) |
+| `npm run test:ftms` | Legacy FTMS fixture script |
 | `npm run deploy:lightsail` | Build/push/apply Lightsail Containers |
+
+Coverage floors (enforced by Jest): **60%** global on collected logic files; **80%** on `client/src/metrics/**`, `client/src/ble/ftms.ts`, and `server/src/strava/**`.
 
 ## Layout
 

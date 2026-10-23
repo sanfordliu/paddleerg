@@ -1,9 +1,9 @@
 import type { LiveMetrics } from './types';
+import { CROSS_TRAINER_DATA, ROWER_DATA, normalizeUuid } from './constants';
 
 export function bytesToHex(data: Uint8Array): string {
   return Array.from(data).map((b) => b.toString(16).padStart(2, '0')).join(' ');
 }
-import { CROSS_TRAINER_DATA, ROWER_DATA, normalizeUuid } from './constants';
 
 const ROWER = normalizeUuid(ROWER_DATA);
 const CROSS_TRAINER = normalizeUuid(CROSS_TRAINER_DATA);

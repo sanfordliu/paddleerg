@@ -12,6 +12,7 @@
     "server": "npm run start -w @paddleerg/server",
     "lint": "npm run lint -w @paddleerg/client",
     "typecheck": "npm run typecheck -w @paddleerg/client && npm run typecheck -w @paddleerg/server",
+    "test": "npm run test -w @paddleerg/client && npm run test -w @paddleerg/server",
     "test:ftms": "npm run test:ftms -w @paddleerg/client",
     "deploy:lightsail": "infra/lightsail/deploy.sh"
   },

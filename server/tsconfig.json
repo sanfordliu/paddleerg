@@ -10,7 +10,9 @@
     "outDir": "dist",
     "rootDir": "src",
     "declaration": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": ["node", "jest"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/__tests__/**", "src/**/*-test.ts", "src/**/*.test.ts"]
 }

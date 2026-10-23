@@ -7,7 +7,7 @@
         "./*"
       ]
     },
-    "types": ["web-bluetooth"]
+    "types": ["web-bluetooth", "jest"]
   },
   "include": [
     "**/*.ts",
@@ -15,5 +15,6 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "types/**/*.d.ts"
-  ]
+  ],
+  "exclude": ["**/coverage/**"]
 }

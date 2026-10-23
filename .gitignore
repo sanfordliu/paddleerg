@@ -39,6 +39,10 @@ server/.env
 # typescript
 *.tsbuildinfo
 
+# Jest
+coverage/
+**/coverage/
+
 # generated native folders
 /ios
 /android
