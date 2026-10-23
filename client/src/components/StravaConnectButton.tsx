@@ -2,7 +2,6 @@ import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { Button } from 'react-native-paper';
 import { Notice } from '@/src/components/Notice';
-import { API_URL } from '@/src/strava/config';
 import { useStravaStore } from '@/src/store/stravaStore';
 import { accents, space } from '@/src/theme';
 
@@ -16,7 +15,6 @@ export function StravaConnectButton() {
   const status = useStravaStore((s) => s.status);
   const clearStatus = useStravaStore((s) => s.clearStatus);
   const setStatus = useStravaStore((s) => s.setStatus);
-  const missingApi = !API_URL;
 
   const onPress = () => {
     try {
@@ -34,16 +32,9 @@ export function StravaConnectButton() {
         mode="contained"
         buttonColor={accents.strava}
         icon={({ size, color }) => <FontAwesome5 name="strava" size={size} color={color} />}
-        disabled={missingApi}
         onPress={onPress}>
         Connect Strava
       </Button>
-      {missingApi ? (
-        <Notice
-          tone="error"
-          message="Missing API URL. Add EXPO_PUBLIC_API_URL to client/.env and restart the app."
-        />
-      ) : null}
       {status ? (
         <Notice
           tone={isErrorStatus(status) ? 'error' : 'info'}

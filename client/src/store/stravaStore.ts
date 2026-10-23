@@ -9,7 +9,6 @@ import {
   type StravaTokens,
 } from '@/src/strava/api';
 import {
-  API_URL,
   STRAVA_SPORT_OPTIONS,
   stravaAuthorizeUrl,
   type StravaSportType,
@@ -123,9 +122,6 @@ export const useStravaStore = create<StravaState>((set, get) => ({
   },
 
   beginOAuth() {
-    if (!API_URL) {
-      throw new Error('Missing EXPO_PUBLIC_API_URL. Point the client at the paddleerg server.');
-    }
     const state = Math.random().toString(36).slice(2);
     if (Platform.OS === 'web') sessionStorage.setItem(STATE_KEY, state);
     return stravaAuthorizeUrl(state);

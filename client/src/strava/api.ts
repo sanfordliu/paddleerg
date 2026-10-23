@@ -1,4 +1,4 @@
-import { API_URL } from './config';
+import { apiUrl } from './config';
 
 export interface StravaTokens {
   access_token: string;
@@ -9,7 +9,7 @@ export interface StravaTokens {
 
 /** Redeem a one-time OAuth handoff sid from the server callback. */
 export async function redeemSession(sid: string): Promise<StravaTokens> {
-  const res = await fetch(`${API_URL}/strava/session/${encodeURIComponent(sid)}`);
+  const res = await fetch(apiUrl(`/strava/session/${encodeURIComponent(sid)}`));
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Session redeem failed: ${res.status} ${text}`);
@@ -18,7 +18,7 @@ export async function redeemSession(sid: string): Promise<StravaTokens> {
 }
 
 export async function refreshTokens(refreshToken: string): Promise<StravaTokens> {
-  const res = await fetch(`${API_URL}/strava/token`, {
+  const res = await fetch(apiUrl('/strava/token'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

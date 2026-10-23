@@ -45,3 +45,12 @@ server/.env
 client/ios
 client/android
 server/dist
+server/public
+
+# Terraform / Lightsail
+infra/lightsail/.terraform/
+infra/lightsail/*.tfstate
+infra/lightsail/*.tfstate.*
+infra/lightsail/terraform.tfvars
+infra/lightsail/tfplan
+infra/lightsail/crash.log

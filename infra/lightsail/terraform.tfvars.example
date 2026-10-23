@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+# aws_region   = "us-east-1"
+# service_name = "paddleerg"
+# power        = "nano"
+# scale        = 1
+
+strava_client_id     = "YOUR_STRAVA_CLIENT_ID"
+strava_client_secret = "YOUR_STRAVA_CLIENT_SECRET"
+
+# Set by deploy.sh after `aws lightsail push-container-image`:
+# container_image = ":paddleerg.app.1"
