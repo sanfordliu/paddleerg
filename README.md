@@ -88,38 +88,59 @@ EXPO_PUBLIC_API_URL=http://localhost:8788
 
 Production is a single **Lightsail Container Service** named `paddleerg` in `us-east-1`. One container runs Express and serves the Expo web export on the same origin (default HTTPS URL like `https://paddleerg.<id>.us-east-1.cs.amazonlightsail.com`). No separate OAuth proxy.
 
+**Pushing to `main` deploys automatically** via GitHub Actions (test → Lightsail image roll).
+
 ### 1. IAM (required once)
 
 There is no AWS-managed Lightsail full-access policy. Create a customer policy
-`LightsailFullAccessPolicy` with `Action: "lightsail:*"` and attach it to
-`sredr-cursor-dev`. Step-by-step: [`infra/lightsail/iam-setup.md`](infra/lightsail/iam-setup.md).
+`LightsailFullAccessPolicy` with `Action: "lightsail:*"` and attach it to the
+deploy IAM user (local CLI and the GitHub Actions access key). Step-by-step:
+[`infra/lightsail/iam-setup.md`](infra/lightsail/iam-setup.md).
 
-Verify:
+Verify locally:
 
 ```bash
 ./infra/lightsail/verify-iam.sh
 ```
 
-### 2. Terraform vars
+### 2. First-time service create (local, once)
 
 ```bash
 cp infra/lightsail/terraform.tfvars.example infra/lightsail/terraform.tfvars
 # Set strava_client_id and strava_client_secret
-```
-
-### 3. Deploy
-
-Requires Docker Desktop (or equivalent) and the AWS CLI.
-
-```bash
 npm run deploy:lightsail
 ```
 
-This creates the container service, builds the image, pushes it with `aws lightsail push-container-image`, and applies a deployment. Env vars (`STRAVA_*`, `CLIENT_RETURN_URL`, `CORS_ORIGINS`) are set from the service URL automatically.
+Requires Docker, AWS CLI, Terraform, and `lightsailctl`. This creates the container
+service and the first deployment.
+
+### 3. GitHub Actions → production
+
+Add these **repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Purpose |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | IAM user with Lightsail access |
+| `AWS_SECRET_ACCESS_KEY` | Matching secret |
+| `STRAVA_CLIENT_ID` | Strava API client id |
+| `STRAVA_CLIENT_SECRET` | Strava API client secret (server only) |
+
+Workflows:
+
+- [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — on push to `main` (and manual `workflow_dispatch`): typecheck + test, then `infra/lightsail/deploy-image.sh`
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — PRs / non-main branches: typecheck + test only
+
+CI deploys **images only** (no Terraform state in Actions). Day-to-day: merge to `main`.
+
+Manual image deploy with the same script:
+
+```bash
+export STRAVA_CLIENT_ID=...
+export STRAVA_CLIENT_SECRET=...
+npm run deploy:lightsail:image
+```
 
 ### 4. Strava production callback
-
-After deploy:
 
 ```bash
 terraform -chdir=infra/lightsail output strava_callback_domain
@@ -134,8 +155,6 @@ Health check:
 curl -sS "$(terraform -chdir=infra/lightsail output -raw service_url)/health"
 ```
 
-Open the service URL in Chrome/Edge and connect Strava end-to-end.
-
 **Secrets:** never put `STRAVA_CLIENT_SECRET` in the client or any `EXPO_PUBLIC_*` variable. Production builds use an empty `EXPO_PUBLIC_API_URL` so API calls stay same-origin.
 
 ## Scripts
@@ -149,7 +168,8 @@ Open the service URL in Chrome/Edge and connect Strava end-to-end.
 | `npm run typecheck` | Client + server |
 | `npm run test` | Jest with coverage (client + server) |
 | `npm run test:ftms` | Legacy FTMS fixture script |
-| `npm run deploy:lightsail` | Build/push/apply Lightsail Containers |
+| `npm run deploy:lightsail` | First-time Terraform create + deploy |
+| `npm run deploy:lightsail:image` | Image-only Lightsail roll (CI path) |
 
 Coverage floors (enforced by Jest): **60%** global on collected logic files; **80%** on `client/src/metrics/**`, `client/src/ble/ftms.ts`, and `server/src/strava/**`.
 

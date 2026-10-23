@@ -9,7 +9,8 @@ npm install
 npm run dev              # client :8081 + server :8788
 npm run typecheck
 npm run test             # Jest + coverage thresholds
-npm run deploy:lightsail # after IAM + terraform.tfvars
+npm run deploy:lightsail # first-time service create
+# Pushes to main auto-deploy via .github/workflows/deploy.yml
 ```
 
 Never put `STRAVA_CLIENT_SECRET` in the client or any `EXPO_PUBLIC_*` variable.
