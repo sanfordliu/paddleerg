@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconButton, Text, useTheme } from 'react-native-paper';
@@ -12,8 +12,13 @@ import { useStravaStore } from '@/src/store/stravaStore';
 import { useWorkoutStore } from '@/src/store/workoutStore';
 import { space } from '@/src/theme';
 
+/** Below this width, brand and actions stack on separate rows. */
+const HEADER_STACK_BREAKPOINT = 560;
+
 export default function WorkoutScreen() {
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const stackHeader = width < HEADER_STACK_BREAKPOINT;
   const connection = useWorkoutStore((s) => s.connection);
   const hrConnection = useWorkoutStore((s) => s.hrConnection);
   const error = useWorkoutStore((s) => s.error);
@@ -46,8 +51,8 @@ export default function WorkoutScreen() {
       style={[styles.safe, { backgroundColor: theme.colors.background }]}
       edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.shell}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
+        <View style={[styles.header, stackHeader && styles.headerStacked]}>
+          <View style={[styles.headerLeft, stackHeader && styles.headerLeftStacked]}>
             <View style={styles.brandRow}>
               <IconButton
                 icon="kayaking"
@@ -63,7 +68,7 @@ export default function WorkoutScreen() {
             </View>
           </View>
 
-          <View style={styles.headerActions}>
+          <View style={[styles.headerActions, stackHeader && styles.headerActionsStacked]}>
             {connected ? <WorkoutTypeSelect /> : null}
             {connected && phase !== 'active' ? (
               <IconButton
@@ -144,7 +149,13 @@ const styles = StyleSheet.create({
     minHeight: 48,
     flexShrink: 0,
   },
+  headerStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: space.sm,
+  },
   headerLeft: { flex: 1, minWidth: 0 },
+  headerLeftStacked: { flex: 0, width: '100%' },
   brandRow: { flexDirection: 'row', alignItems: 'center', marginLeft: -8 },
   brandIcon: { margin: 0 },
   brand: { fontWeight: '800', letterSpacing: -0.4 },
@@ -153,6 +164,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexShrink: 0,
     gap: space.xs,
+  },
+  headerActionsStacked: {
+    width: '100%',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
   },
   board: { flex: 1, minHeight: 0 },
 });

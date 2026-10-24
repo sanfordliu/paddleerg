@@ -1,6 +1,6 @@
 # paddleerg
 
-Companion app for the **Whipr** paddle erg. Connect over Bluetooth (FTMS) and optionally a BLE heart-rate strap, watch live metrics on a customizable tile board (with optional coaching zones/targets), save a session, and upload it to **Strava**.
+Companion app for **FTMS** paddle ergs and other Fitness Machine Service devices. Connect over Bluetooth, optionally pair a BLE heart-rate strap, watch live metrics on a customizable tile board (with optional coaching zones/targets), save a session, and upload it to **Strava**.
 
 Monorepo:
 
@@ -14,15 +14,15 @@ Monorepo:
 
 ## What works now
 
-- Scan / connect to an FTMS machine; auto-reconnect when the Whipr comes back online
+- Scan / connect to an FTMS machine; auto-reconnect when the device comes back online
 - Live metric tiles (reorder, add, remove) via Settings → Display
 - Heart-rate zones and directional targets on Settings → Athlete
 - Start / stop session recording and share-to-Strava (TCX built on the client)
 - Server-owned Strava OAuth (authorize → callback → one-time session handoff → refresh)
+- Production deploy on AWS Lightsail (auto on push to `main`)
 
 ## What’s still left to do
 
-- Grant Lightsail IAM to the deploy user and run the first production deploy (see below)
 - Native BLE + Expo development builds for iPhone / Android
 - Full-viewport responsive metric board polish
 
