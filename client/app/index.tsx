@@ -27,8 +27,10 @@ export default function WorkoutScreen() {
   const phase = useWorkoutStore((s) => s.phase);
   const lastSavedSummary = useWorkoutStore((s) => s.lastSavedSummary);
   const startWorkout = useWorkoutStore((s) => s.startWorkout);
+  const resumeWorkout = useWorkoutStore((s) => s.resumeWorkout);
   const stopWorkout = useWorkoutStore((s) => s.stopWorkout);
   const clearSaved = useWorkoutStore((s) => s.clearSaved);
+  const workoutInProgress = phase === 'active' || phase === 'paused';
 
   const hydrate = useStravaStore((s) => s.hydrate);
   const beginAutoReconnect = useWorkoutStore((s) => s.beginAutoReconnect);
@@ -70,7 +72,17 @@ export default function WorkoutScreen() {
 
           <View style={[styles.headerActions, stackHeader && styles.headerActionsStacked]}>
             {connected ? <WorkoutTypeSelect /> : null}
-            {connected && phase !== 'active' ? (
+            {connected && phase === 'paused' ? (
+              <IconButton
+                icon="play"
+                mode="contained"
+                containerColor={theme.colors.tertiary}
+                iconColor={theme.colors.onTertiary}
+                accessibilityLabel="Resume workout"
+                onPress={resumeWorkout}
+              />
+            ) : null}
+            {connected && !workoutInProgress ? (
               <IconButton
                 icon="play"
                 mode="contained"
@@ -80,7 +92,7 @@ export default function WorkoutScreen() {
                 onPress={startWorkout}
               />
             ) : null}
-            {connected && phase === 'active' ? (
+            {workoutInProgress ? (
               <IconButton
                 icon="stop"
                 mode="contained"

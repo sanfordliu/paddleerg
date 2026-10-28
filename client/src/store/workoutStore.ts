@@ -10,7 +10,7 @@ import type {
   WorkoutSample,
 } from '@/src/ble/types';
 
-export type WorkoutPhase = 'idle' | 'active' | 'finished';
+export type WorkoutPhase = 'idle' | 'active' | 'paused' | 'finished';
 
 export interface NotificationLogEntry extends NotificationEvent {
   parsed: LiveMetrics | null;
@@ -39,6 +39,10 @@ function elapsedFromStart(startedAt: number | null): number {
 function withWorkoutElapsed(metrics: LiveMetrics, phase: WorkoutPhase, startedAt: number | null): LiveMetrics {
   if (phase !== 'active' || startedAt == null) return metrics;
   return { ...metrics, elapsedSeconds: elapsedFromStart(startedAt) };
+}
+
+function isInProgress(phase: WorkoutPhase): boolean {
+  return phase === 'active' || phase === 'paused';
 }
 
 interface WorkoutSummary {
@@ -71,6 +75,8 @@ interface WorkoutState {
   disconnect: () => Promise<void>;
   disconnectHr: () => Promise<void>;
   startWorkout: () => void;
+  /** Continue a workout paused by an unexpected ERG drop (or after manual pause). */
+  resumeWorkout: () => void;
   stopWorkout: () => void;
   clearSaved: () => void;
   clearError: () => void;
@@ -112,21 +118,39 @@ function metricsWithHr(base: LiveMetrics, hrBpm: number | null, hrConnected: boo
 
 function finishActiveWorkout(get: Get): Partial<WorkoutState> {
   const state = get();
-  if (state.phase !== 'active') return {};
+  if (!isInProgress(state.phase)) return {};
   clearWorkoutTimer();
-  const endedAt = Date.now();
-  const elapsedSeconds = elapsedFromStart(state.startedAt);
+  const elapsedSeconds =
+    state.phase === 'paused'
+      ? (state.metrics.elapsedSeconds ?? 0)
+      : elapsedFromStart(state.startedAt);
+  const startedAt = state.startedAt ?? Date.now() - elapsedSeconds * 1000;
+  // Prefer elapsed over wall clock so a disconnect pause does not inflate Strava duration.
+  const endedAt = startedAt + elapsedSeconds * 1000;
   const metrics = { ...state.metrics, elapsedSeconds };
   return {
     phase: 'finished',
     startedAt: null,
     metrics,
     lastSavedSummary: {
-      startedAt: state.startedAt ?? endedAt,
+      startedAt,
       endedAt,
       metrics: { ...metrics },
       samples: [...state.samples],
     },
+  };
+}
+
+/** Keep samples / elapsed; stop the clock until ERG is back and user resumes. */
+function pauseActiveWorkout(get: Get): Partial<WorkoutState> {
+  const state = get();
+  if (state.phase !== 'active') return {};
+  clearWorkoutTimer();
+  const elapsedSeconds = elapsedFromStart(state.startedAt);
+  return {
+    phase: 'paused',
+    // Keep startedAt so finish/resume can recover wall-clock start; timer is stopped.
+    metrics: { ...state.metrics, elapsedSeconds },
   };
 }
 
@@ -205,12 +229,16 @@ function onConnectionLost(set: Set, get: Get) {
   if (state.connection === 'disconnected' && !state.device) return;
 
   const remembered = getBleAdapter().getRememberedDeviceInfo() ?? state.device;
+  const wasInProgress = isInProgress(state.phase);
+  const pausePatch = pauseActiveWorkout(get);
   set({
     connection: 'reconnecting',
     device: remembered,
-    error: null,
+    error: wasInProgress
+      ? 'ERG disconnected. Reconnect to resume your workout — do not stop unless you want to save/share.'
+      : null,
     gattServices: [],
-    ...finishActiveWorkout(get),
+    ...pausePatch,
   });
   beginErgAutoReconnectInternal(set, get);
 }
@@ -278,7 +306,15 @@ async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
   });
 
   adapter.setConnectionLostHandler(() => onConnectionLost(set, get));
-  set({ connection: 'connected', device, error: null });
+  const { phase } = get();
+  set({
+    connection: 'connected',
+    device,
+    error:
+      phase === 'paused'
+        ? 'ERG reconnected. Tap play to resume your workout, or stop to save/share.'
+        : null,
+  });
 }
 
 async function afterHrConnected(set: Set, get: Get, device: BleDeviceInfo) {
@@ -477,6 +513,21 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         ...(hrConnection === 'connected' && hrBpm != null ? { heartRateBpm: hrBpm } : {}),
       },
       lastSavedSummary: null,
+      error: null,
+    });
+    startWorkoutTimer(set, get);
+  },
+
+  resumeWorkout() {
+    const state = get();
+    if (state.phase !== 'paused') return;
+    const elapsed = state.metrics.elapsedSeconds ?? 0;
+    const startedAt = Date.now() - elapsed * 1000;
+    set({
+      phase: 'active',
+      startedAt,
+      error: null,
+      metrics: { ...state.metrics, elapsedSeconds: elapsed },
     });
     startWorkoutTimer(set, get);
   },

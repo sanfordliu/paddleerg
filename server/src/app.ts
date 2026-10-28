@@ -35,7 +35,8 @@ export function createApp() {
         next();
         return;
       }
-      if (req.path.startsWith('/strava') || req.path === '/health') {
+      // API routes only — do not match SPA paths like /strava-callback.
+      if (req.path === '/health' || req.path.startsWith('/strava/')) {
         next();
         return;
       }
