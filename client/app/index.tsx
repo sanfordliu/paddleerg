@@ -29,8 +29,11 @@ export default function WorkoutScreen() {
   const startWorkout = useWorkoutStore((s) => s.startWorkout);
   const resumeWorkout = useWorkoutStore((s) => s.resumeWorkout);
   const stopWorkout = useWorkoutStore((s) => s.stopWorkout);
+  const clearWorkout = useWorkoutStore((s) => s.clearWorkout);
   const clearSaved = useWorkoutStore((s) => s.clearSaved);
-  const workoutInProgress = phase === 'active' || phase === 'paused';
+  const workoutActive = phase === 'active';
+  const workoutPaused = phase === 'paused';
+  const workoutInProgress = workoutActive || workoutPaused;
 
   const hydrate = useStravaStore((s) => s.hydrate);
   const beginAutoReconnect = useWorkoutStore((s) => s.beginAutoReconnect);
@@ -72,7 +75,7 @@ export default function WorkoutScreen() {
 
           <View style={[styles.headerActions, stackHeader && styles.headerActionsStacked]}>
             {connected ? <WorkoutTypeSelect /> : null}
-            {connected && phase === 'paused' ? (
+            {connected && workoutPaused ? (
               <IconButton
                 icon="play"
                 mode="contained"
@@ -92,7 +95,7 @@ export default function WorkoutScreen() {
                 onPress={startWorkout}
               />
             ) : null}
-            {workoutInProgress ? (
+            {workoutActive ? (
               <IconButton
                 icon="stop"
                 mode="contained"
@@ -100,6 +103,25 @@ export default function WorkoutScreen() {
                 iconColor={theme.colors.onError}
                 accessibilityLabel="Stop and save"
                 onPress={stopWorkout}
+              />
+            ) : null}
+            {workoutPaused ? (
+              <IconButton
+                icon="share-variant"
+                mode="contained"
+                containerColor={theme.colors.tertiary}
+                iconColor={theme.colors.onTertiary}
+                accessibilityLabel="Share workout"
+                onPress={stopWorkout}
+              />
+            ) : null}
+            {workoutPaused ? (
+              <IconButton
+                icon="delete-outline"
+                mode="contained-tonal"
+                iconColor={theme.colors.onSurface}
+                accessibilityLabel="Clear workout"
+                onPress={clearWorkout}
               />
             ) : null}
             {!connected ? (

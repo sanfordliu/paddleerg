@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { getBleAdapter, getHrBleAdapter } from '@/src/ble/adapter';
 import { parseFtmsNotification, bytesToHex } from '@/src/ble/ftms';
 import type {
@@ -9,8 +11,19 @@ import type {
   NotificationEvent,
   WorkoutSample,
 } from '@/src/ble/types';
+import {
+  elapsedFromStart,
+  finishSession,
+  idleSessionReset,
+  isInProgress,
+  pauseSession,
+  resumeSession,
+  withWorkoutElapsed,
+  type WorkoutPhase,
+  type WorkoutSummary,
+} from '@/src/store/workoutSession';
 
-export type WorkoutPhase = 'idle' | 'active' | 'paused' | 'finished';
+export type { WorkoutPhase, WorkoutSummary } from '@/src/store/workoutSession';
 
 export interface NotificationLogEntry extends NotificationEvent {
   parsed: LiveMetrics | null;
@@ -28,28 +41,6 @@ function clearWorkoutTimer() {
     clearInterval(workoutTimer);
     workoutTimer = null;
   }
-}
-
-function elapsedFromStart(startedAt: number | null): number {
-  if (startedAt == null) return 0;
-  return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-}
-
-/** Prefer app workout clock over FTMS machine elapsed while a session is active. */
-function withWorkoutElapsed(metrics: LiveMetrics, phase: WorkoutPhase, startedAt: number | null): LiveMetrics {
-  if (phase !== 'active' || startedAt == null) return metrics;
-  return { ...metrics, elapsedSeconds: elapsedFromStart(startedAt) };
-}
-
-function isInProgress(phase: WorkoutPhase): boolean {
-  return phase === 'active' || phase === 'paused';
-}
-
-interface WorkoutSummary {
-  startedAt: number;
-  endedAt: number;
-  metrics: LiveMetrics;
-  samples: WorkoutSample[];
 }
 
 interface WorkoutState {
@@ -78,12 +69,16 @@ interface WorkoutState {
   /** Continue a workout paused by an unexpected ERG drop (or after manual pause). */
   resumeWorkout: () => void;
   stopWorkout: () => void;
+  /** Discard in-progress / finished session without sharing. */
+  clearWorkout: () => void;
   clearSaved: () => void;
   clearError: () => void;
   clearNotificationLog: () => void;
 }
 
-type Set = (partial: Partial<WorkoutState> | ((s: WorkoutState) => Partial<WorkoutState>)) => void;
+type Set = (
+  partial: Partial<WorkoutState> | ((s: WorkoutState) => Partial<WorkoutState>)
+) => void;
 type Get = () => WorkoutState;
 
 function startWorkoutTimer(set: Set, get: Get) {
@@ -117,41 +112,17 @@ function metricsWithHr(base: LiveMetrics, hrBpm: number | null, hrConnected: boo
 }
 
 function finishActiveWorkout(get: Get): Partial<WorkoutState> {
-  const state = get();
-  if (!isInProgress(state.phase)) return {};
+  const finished = finishSession(get());
+  if (!finished) return {};
   clearWorkoutTimer();
-  const elapsedSeconds =
-    state.phase === 'paused'
-      ? (state.metrics.elapsedSeconds ?? 0)
-      : elapsedFromStart(state.startedAt);
-  const startedAt = state.startedAt ?? Date.now() - elapsedSeconds * 1000;
-  // Prefer elapsed over wall clock so a disconnect pause does not inflate Strava duration.
-  const endedAt = startedAt + elapsedSeconds * 1000;
-  const metrics = { ...state.metrics, elapsedSeconds };
-  return {
-    phase: 'finished',
-    startedAt: null,
-    metrics,
-    lastSavedSummary: {
-      startedAt,
-      endedAt,
-      metrics: { ...metrics },
-      samples: [...state.samples],
-    },
-  };
+  return finished;
 }
 
-/** Keep samples / elapsed; stop the clock until ERG is back and user resumes. */
 function pauseActiveWorkout(get: Get): Partial<WorkoutState> {
-  const state = get();
-  if (state.phase !== 'active') return {};
+  const paused = pauseSession(get());
+  if (!paused) return {};
   clearWorkoutTimer();
-  const elapsedSeconds = elapsedFromStart(state.startedAt);
-  return {
-    phase: 'paused',
-    // Keep startedAt so finish/resume can recover wall-clock start; timer is stopped.
-    metrics: { ...state.metrics, elapsedSeconds },
-  };
+  return paused;
 }
 
 function beginErgAutoReconnectInternal(set: Set, get: Get) {
@@ -235,7 +206,7 @@ function onConnectionLost(set: Set, get: Get) {
     connection: 'reconnecting',
     device: remembered,
     error: wasInProgress
-      ? 'ERG disconnected. Reconnect to resume your workout — do not stop unless you want to save/share.'
+      ? 'ERG disconnected. Reconnect to resume your workout — use Share to save, or Clear to discard.'
       : null,
     gattServices: [],
     ...pausePatch,
@@ -312,7 +283,7 @@ async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
     device,
     error:
       phase === 'paused'
-        ? 'ERG reconnected. Tap play to resume your workout, or stop to save/share.'
+        ? 'ERG reconnected. Tap play to resume, Share to save, or Clear to discard.'
         : null,
   });
 }
@@ -352,200 +323,245 @@ function mapConnectError(e: unknown): string | null {
   return message;
 }
 
-export const useWorkoutStore = create<WorkoutState>((set, get) => ({
-  connection: 'disconnected',
-  device: null,
-  hrConnection: 'disconnected',
-  hrDevice: null,
-  hrBpm: null,
-  error: null,
-  metrics: {},
-  phase: 'idle',
-  startedAt: null,
-  samples: [],
-  gattServices: [],
-  notificationLog: [],
-  lastSavedSummary: null,
+function restartTimerAfterRehydrate() {
+  const state = useWorkoutStore.getState();
+  if (state.phase !== 'active' || state.startedAt == null) return;
+  const elapsedSeconds = elapsedFromStart(state.startedAt);
+  useWorkoutStore.setState({
+    metrics: { ...state.metrics, elapsedSeconds },
+  });
+  startWorkoutTimer(
+    (partial) => {
+      useWorkoutStore.setState(
+        typeof partial === 'function' ? partial(useWorkoutStore.getState()) : partial
+      );
+    },
+    () => useWorkoutStore.getState()
+  );
+}
 
-  async chooseFtmsDevice() {
-    const adapter = getBleAdapter();
-    adapter.stopAutoReconnect();
-    if (!adapter.isAvailable()) {
-      set({
-        error:
-          'Bluetooth not available. On Mac use Chrome or Edge. On iOS/Android a native build is required.',
-      });
-      return;
-    }
-    try {
-      set({ connection: 'connecting', error: null });
-      const device = await adapter.requestFtmsDevice();
-      await afterConnected(set, get, device);
-    } catch (e) {
-      clearConnectionHandler();
-      if (adapter.hasLiveDevice()) {
-        set({
-          connection: 'reconnecting',
-          error: mapConnectError(e),
-          device: adapter.getRememberedDeviceInfo(),
-        });
-        beginErgAutoReconnectInternal(set, get);
-      } else {
-        set({
-          connection: 'disconnected',
-          error: mapConnectError(e),
-          device: adapter.getRememberedDeviceInfo(),
-        });
-      }
-    }
-  },
-
-  async chooseHrDevice() {
-    const adapter = getHrBleAdapter();
-    adapter.stopAutoReconnect();
-    if (!adapter.isAvailable()) {
-      set({
-        error:
-          'Bluetooth not available. On Mac use Chrome or Edge. On iOS/Android a native build is required.',
-      });
-      return;
-    }
-    try {
-      set({ hrConnection: 'connecting', error: null });
-      const device = await adapter.requestHeartRateDevice();
-      await afterHrConnected(set, get, device);
-    } catch (e) {
-      clearHrConnectionHandler();
-      if (adapter.hasLiveDevice()) {
-        set({
-          hrConnection: 'reconnecting',
-          error: mapConnectError(e),
-          hrDevice: adapter.getRememberedDeviceInfo(),
-        });
-        beginHrAutoReconnectInternal(set, get);
-      } else {
-        set({
-          hrConnection: 'disconnected',
-          hrDevice: adapter.getRememberedDeviceInfo(),
-          hrBpm: null,
-          error: mapConnectError(e),
-        });
-      }
-    }
-  },
-
-  beginAutoReconnect() {
-    const { connection, hrConnection } = get();
-
-    if (connection !== 'connected' && connection !== 'connecting') {
-      if (!getBleAdapter().hasLiveDevice()) {
-        const remembered = getBleAdapter().getRememberedDeviceInfo();
-        if (remembered && connection === 'disconnected') {
-          set({ device: remembered });
-        }
-      } else {
-        beginErgAutoReconnectInternal(set, get);
-      }
-    }
-
-    if (hrConnection !== 'connected' && hrConnection !== 'connecting') {
-      if (!getHrBleAdapter().hasLiveDevice()) {
-        const remembered = getHrBleAdapter().getRememberedDeviceInfo();
-        if (remembered && hrConnection === 'disconnected') {
-          set({ hrDevice: remembered });
-        }
-      } else {
-        beginHrAutoReconnectInternal(set, get);
-      }
-    }
-  },
-
-  async disconnect() {
-    clearConnectionHandler();
-    clearWorkoutTimer();
-    getBleAdapter().stopAutoReconnect();
-    try {
-      await getBleAdapter().disconnect();
-    } catch {}
-    const { hrConnection, hrBpm } = get();
-    set({
+export const useWorkoutStore = create<WorkoutState>()(
+  persist(
+    (set, get) => ({
       connection: 'disconnected',
       device: null,
-      phase: 'idle',
-      startedAt: null,
-      metrics:
-        hrConnection === 'connected' && hrBpm != null ? { heartRateBpm: hrBpm } : {},
-      gattServices: [],
-      notificationLog: [],
-      error: null,
-    });
-  },
-
-  async disconnectHr() {
-    clearHrConnectionHandler();
-    getHrBleAdapter().stopAutoReconnect();
-    try {
-      await getHrBleAdapter().disconnect();
-    } catch {}
-    const { metrics, hrBpm } = get();
-    const next = { ...metrics };
-    if (hrBpm != null && next.heartRateBpm === hrBpm) {
-      delete next.heartRateBpm;
-    }
-    set({
       hrConnection: 'disconnected',
       hrDevice: null,
       hrBpm: null,
-      metrics: next,
       error: null,
-    });
-  },
-
-  startWorkout() {
-    const { hrConnection, hrBpm } = get();
-    const startedAt = Date.now();
-    set({
-      phase: 'active',
-      startedAt,
+      metrics: {},
+      phase: 'idle',
+      startedAt: null,
       samples: [],
-      metrics: {
-        elapsedSeconds: 0,
-        ...(hrConnection === 'connected' && hrBpm != null ? { heartRateBpm: hrBpm } : {}),
-      },
+      gattServices: [],
+      notificationLog: [],
       lastSavedSummary: null,
-      error: null,
-    });
-    startWorkoutTimer(set, get);
-  },
 
-  resumeWorkout() {
-    const state = get();
-    if (state.phase !== 'paused') return;
-    const elapsed = state.metrics.elapsedSeconds ?? 0;
-    const startedAt = Date.now() - elapsed * 1000;
-    set({
-      phase: 'active',
-      startedAt,
-      error: null,
-      metrics: { ...state.metrics, elapsedSeconds: elapsed },
-    });
-    startWorkoutTimer(set, get);
-  },
+      async chooseFtmsDevice() {
+        const adapter = getBleAdapter();
+        adapter.stopAutoReconnect();
+        if (!adapter.isAvailable()) {
+          set({
+            error:
+              'Bluetooth not available. On Mac use Chrome or Edge. On iOS/Android a native build is required.',
+          });
+          return;
+        }
+        try {
+          set({ connection: 'connecting', error: null });
+          const device = await adapter.requestFtmsDevice();
+          await afterConnected(set, get, device);
+        } catch (e) {
+          clearConnectionHandler();
+          if (adapter.hasLiveDevice()) {
+            set({
+              connection: 'reconnecting',
+              error: mapConnectError(e),
+              device: adapter.getRememberedDeviceInfo(),
+            });
+            beginErgAutoReconnectInternal(set, get);
+          } else {
+            set({
+              connection: 'disconnected',
+              error: mapConnectError(e),
+              device: adapter.getRememberedDeviceInfo(),
+            });
+          }
+        }
+      },
 
-  stopWorkout() {
-    set(finishActiveWorkout(get));
-  },
+      async chooseHrDevice() {
+        const adapter = getHrBleAdapter();
+        adapter.stopAutoReconnect();
+        if (!adapter.isAvailable()) {
+          set({
+            error:
+              'Bluetooth not available. On Mac use Chrome or Edge. On iOS/Android a native build is required.',
+          });
+          return;
+        }
+        try {
+          set({ hrConnection: 'connecting', error: null });
+          const device = await adapter.requestHeartRateDevice();
+          await afterHrConnected(set, get, device);
+        } catch (e) {
+          clearHrConnectionHandler();
+          if (adapter.hasLiveDevice()) {
+            set({
+              hrConnection: 'reconnecting',
+              error: mapConnectError(e),
+              hrDevice: adapter.getRememberedDeviceInfo(),
+            });
+            beginHrAutoReconnectInternal(set, get);
+          } else {
+            set({
+              hrConnection: 'disconnected',
+              hrDevice: adapter.getRememberedDeviceInfo(),
+              hrBpm: null,
+              error: mapConnectError(e),
+            });
+          }
+        }
+      },
 
-  clearSaved() {
-    clearWorkoutTimer();
-    set({ lastSavedSummary: null, phase: 'idle', startedAt: null, samples: [] });
-  },
+      beginAutoReconnect() {
+        const { connection, hrConnection } = get();
 
-  clearError() {
-    set({ error: null });
-  },
+        if (connection !== 'connected' && connection !== 'connecting') {
+          if (!getBleAdapter().hasLiveDevice()) {
+            const remembered = getBleAdapter().getRememberedDeviceInfo();
+            if (remembered && connection === 'disconnected') {
+              set({ device: remembered });
+            }
+          } else {
+            beginErgAutoReconnectInternal(set, get);
+          }
+        }
 
-  clearNotificationLog() {
-    set({ notificationLog: [] });
-  },
-}));
+        if (hrConnection !== 'connected' && hrConnection !== 'connecting') {
+          if (!getHrBleAdapter().hasLiveDevice()) {
+            const remembered = getHrBleAdapter().getRememberedDeviceInfo();
+            if (remembered && hrConnection === 'disconnected') {
+              set({ hrDevice: remembered });
+            }
+          } else {
+            beginHrAutoReconnectInternal(set, get);
+          }
+        }
+      },
+
+      async disconnect() {
+        clearConnectionHandler();
+        clearWorkoutTimer();
+        getBleAdapter().stopAutoReconnect();
+        try {
+          await getBleAdapter().disconnect();
+        } catch {}
+        const { hrConnection, hrBpm } = get();
+        set({
+          connection: 'disconnected',
+          device: null,
+          gattServices: [],
+          notificationLog: [],
+          ...idleSessionReset(hrConnection === 'connected' ? hrBpm : null),
+        });
+      },
+
+      async disconnectHr() {
+        clearHrConnectionHandler();
+        getHrBleAdapter().stopAutoReconnect();
+        try {
+          await getHrBleAdapter().disconnect();
+        } catch {}
+        const { metrics, hrBpm } = get();
+        const next = { ...metrics };
+        if (hrBpm != null && next.heartRateBpm === hrBpm) {
+          delete next.heartRateBpm;
+        }
+        set({
+          hrConnection: 'disconnected',
+          hrDevice: null,
+          hrBpm: null,
+          metrics: next,
+          error: null,
+        });
+      },
+
+      startWorkout() {
+        const { hrConnection, hrBpm } = get();
+        const startedAt = Date.now();
+        set({
+          phase: 'active',
+          startedAt,
+          samples: [],
+          metrics: {
+            elapsedSeconds: 0,
+            ...(hrConnection === 'connected' && hrBpm != null ? { heartRateBpm: hrBpm } : {}),
+          },
+          lastSavedSummary: null,
+          error: null,
+        });
+        startWorkoutTimer(set, get);
+      },
+
+      resumeWorkout() {
+        const resumed = resumeSession(get());
+        if (!resumed) return;
+        set({ ...resumed, error: null });
+        startWorkoutTimer(set, get);
+      },
+
+      stopWorkout() {
+        set(finishActiveWorkout(get));
+      },
+
+      clearWorkout() {
+        clearWorkoutTimer();
+        const { hrConnection, hrBpm } = get();
+        set(idleSessionReset(hrConnection === 'connected' ? hrBpm : null));
+      },
+
+      clearSaved() {
+        clearWorkoutTimer();
+        const { hrConnection, hrBpm } = get();
+        set(idleSessionReset(hrConnection === 'connected' ? hrBpm : null));
+      },
+
+      clearError() {
+        set({ error: null });
+      },
+
+      clearNotificationLog() {
+        set({ notificationLog: [] });
+      },
+    }),
+    {
+      name: 'paddleerg-workout',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (s) => ({
+        phase: s.phase,
+        startedAt: s.startedAt,
+        samples: s.samples,
+        metrics: s.metrics,
+        lastSavedSummary: s.lastSavedSummary,
+      }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<WorkoutState> | undefined;
+        if (!p) return current;
+        return {
+          ...current,
+          phase: p.phase ?? current.phase,
+          startedAt: p.startedAt ?? current.startedAt,
+          samples: Array.isArray(p.samples) ? p.samples : current.samples,
+          metrics: p.metrics ?? current.metrics,
+          lastSavedSummary: p.lastSavedSummary !== undefined ? p.lastSavedSummary : current.lastSavedSummary,
+        };
+      },
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) return;
+        // Defer so the store binding is complete before restarting the timer.
+        Promise.resolve().then(() => restartTimerAfterRehydrate());
+      },
+    }
+  )
+);
