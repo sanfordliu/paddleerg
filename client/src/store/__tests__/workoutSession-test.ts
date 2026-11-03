@@ -1,4 +1,5 @@
 import {
+  applyCumulativeDeviceMetrics,
   elapsedFromStart,
   finishSession,
   idleSessionReset,
@@ -101,7 +102,46 @@ describe('workoutSession', () => {
       lastSavedSummary: null,
       metrics: {},
       error: null,
+      cumulativeOffsets: {},
+      lastDeviceTotals: {},
     });
     expect(idleSessionReset(142).metrics).toEqual({ heartRateBpm: 142 });
+  });
+
+  test('applyCumulativeDeviceMetrics keeps climbing after an ERG reset', () => {
+    let state = { offsets: {}, lastDevice: {} as Record<string, number> };
+
+    let applied = applyCumulativeDeviceMetrics(
+      { strokeCount: 100, distanceMeters: 500, instantaneousPowerWatts: 120 },
+      state
+    );
+    expect(applied.metrics.strokeCount).toBe(100);
+    expect(applied.metrics.distanceMeters).toBe(500);
+    expect(applied.metrics.instantaneousPowerWatts).toBe(120);
+    state = applied.cumulative;
+
+    applied = applyCumulativeDeviceMetrics(
+      { strokeCount: 110, distanceMeters: 560 },
+      state
+    );
+    expect(applied.metrics.strokeCount).toBe(110);
+    expect(applied.metrics.distanceMeters).toBe(560);
+    state = applied.cumulative;
+
+    // Machine reset — counters restart near zero.
+    applied = applyCumulativeDeviceMetrics(
+      { strokeCount: 2, distanceMeters: 8 },
+      state
+    );
+    expect(applied.metrics.strokeCount).toBe(112);
+    expect(applied.metrics.distanceMeters).toBe(568);
+    state = applied.cumulative;
+
+    applied = applyCumulativeDeviceMetrics(
+      { strokeCount: 12, distanceMeters: 40 },
+      state
+    );
+    expect(applied.metrics.strokeCount).toBe(122);
+    expect(applied.metrics.distanceMeters).toBe(600);
   });
 });

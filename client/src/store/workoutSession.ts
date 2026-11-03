@@ -2,6 +2,17 @@ import type { LiveMetrics, WorkoutSample } from '@/src/ble/types';
 
 export type WorkoutPhase = 'idle' | 'active' | 'paused' | 'finished';
 
+/** Absolute FTMS counters that restart at 0 when the ERG resets. */
+export const CUMULATIVE_METRIC_KEYS = [
+  'distanceMeters',
+  'strokeCount',
+  'totalEnergyKcal',
+] as const;
+
+export type CumulativeMetricKey = (typeof CUMULATIVE_METRIC_KEYS)[number];
+
+export type DeviceTotals = Partial<Record<CumulativeMetricKey, number>>;
+
 export interface WorkoutSummary {
   startedAt: number;
   endedAt: number;
@@ -14,6 +25,41 @@ export interface SessionSnapshot {
   startedAt: number | null;
   metrics: LiveMetrics;
   samples: WorkoutSample[];
+}
+
+export interface CumulativeDeviceState {
+  /** Added to each raw device reading so session totals survive ERG resets. */
+  offsets: DeviceTotals;
+  /** Last raw absolute values from the machine (pre-offset). */
+  lastDevice: DeviceTotals;
+}
+
+export const EMPTY_CUMULATIVE: CumulativeDeviceState = { offsets: {}, lastDevice: {} };
+
+/**
+ * Map absolute FTMS counters onto continuous session totals.
+ * When the machine resets (raw drops), the previous raw value is folded into the offset.
+ */
+export function applyCumulativeDeviceMetrics(
+  parsed: LiveMetrics,
+  cumulative: CumulativeDeviceState
+): { metrics: LiveMetrics; cumulative: CumulativeDeviceState } {
+  const offsets: DeviceTotals = { ...cumulative.offsets };
+  const lastDevice: DeviceTotals = { ...cumulative.lastDevice };
+  const metrics: LiveMetrics = { ...parsed };
+
+  for (const key of CUMULATIVE_METRIC_KEYS) {
+    const raw = parsed[key];
+    if (raw == null || !Number.isFinite(raw)) continue;
+    const prev = lastDevice[key];
+    if (prev != null && raw < prev) {
+      offsets[key] = (offsets[key] ?? 0) + prev;
+    }
+    lastDevice[key] = raw;
+    metrics[key] = (offsets[key] ?? 0) + raw;
+  }
+
+  return { metrics, cumulative: { offsets, lastDevice } };
 }
 
 export function isInProgress(phase: WorkoutPhase): boolean {
@@ -108,6 +154,8 @@ export function idleSessionReset(keepHrBpm: number | null): {
   lastSavedSummary: null;
   metrics: LiveMetrics;
   error: null;
+  cumulativeOffsets: DeviceTotals;
+  lastDeviceTotals: DeviceTotals;
 } {
   return {
     phase: 'idle',
@@ -116,5 +164,7 @@ export function idleSessionReset(keepHrBpm: number | null): {
     lastSavedSummary: null,
     metrics: keepHrBpm != null ? { heartRateBpm: keepHrBpm } : {},
     error: null,
+    cumulativeOffsets: {},
+    lastDeviceTotals: {},
   };
 }

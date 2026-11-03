@@ -12,6 +12,7 @@ import type {
   WorkoutSample,
 } from '@/src/ble/types';
 import {
+  applyCumulativeDeviceMetrics,
   elapsedFromStart,
   finishSession,
   idleSessionReset,
@@ -19,6 +20,7 @@ import {
   pauseSession,
   resumeSession,
   withWorkoutElapsed,
+  type DeviceTotals,
   type WorkoutPhase,
   type WorkoutSummary,
 } from '@/src/store/workoutSession';
@@ -55,6 +57,10 @@ interface WorkoutState {
   phase: WorkoutPhase;
   startedAt: number | null;
   samples: WorkoutSample[];
+  /** Offset so distance/strokes/kcal keep climbing across ERG resets. */
+  cumulativeOffsets: DeviceTotals;
+  /** Last raw absolute counters from the machine (before offsets). */
+  lastDeviceTotals: DeviceTotals;
   gattServices: GattServiceInfo[];
   notificationLog: NotificationLogEntry[];
   lastSavedSummary: WorkoutSummary | null;
@@ -252,7 +258,19 @@ async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
     const hex = event.hex ?? bytesToHex(event.value);
     const receivedAt = event.receivedAt ?? Date.now();
     set((state) => {
-      const merged = parsed ? { ...state.metrics, ...parsed } : state.metrics;
+      let devicePatch = parsed;
+      let cumulativeOffsets = state.cumulativeOffsets;
+      let lastDeviceTotals = state.lastDeviceTotals;
+      if (parsed && isInProgress(state.phase)) {
+        const applied = applyCumulativeDeviceMetrics(parsed, {
+          offsets: state.cumulativeOffsets,
+          lastDevice: state.lastDeviceTotals,
+        });
+        devicePatch = applied.metrics;
+        cumulativeOffsets = applied.cumulative.offsets;
+        lastDeviceTotals = applied.cumulative.lastDevice;
+      }
+      const merged = devicePatch ? { ...state.metrics, ...devicePatch } : state.metrics;
       const withHr = metricsWithHr(
         merged,
         state.hrBpm,
@@ -271,6 +289,8 @@ async function afterConnected(set: Set, get: Get, device: BleDeviceInfo) {
       return {
         metrics,
         samples,
+        cumulativeOffsets,
+        lastDeviceTotals,
         notificationLog: [entry, ...state.notificationLog].slice(0, MAX_NOTIFICATION_LOG),
       };
     });
@@ -353,6 +373,8 @@ export const useWorkoutStore = create<WorkoutState>()(
       phase: 'idle',
       startedAt: null,
       samples: [],
+      cumulativeOffsets: {},
+      lastDeviceTotals: {},
       gattServices: [],
       notificationLog: [],
       lastSavedSummary: null,
@@ -494,6 +516,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           phase: 'active',
           startedAt,
           samples: [],
+          cumulativeOffsets: {},
+          lastDeviceTotals: {},
           metrics: {
             elapsedSeconds: 0,
             ...(hrConnection === 'connected' && hrBpm != null ? { heartRateBpm: hrBpm } : {}),
@@ -543,6 +567,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         startedAt: s.startedAt,
         samples: s.samples,
         metrics: s.metrics,
+        cumulativeOffsets: s.cumulativeOffsets,
+        lastDeviceTotals: s.lastDeviceTotals,
         lastSavedSummary: s.lastSavedSummary,
       }),
       merge: (persisted, current) => {
@@ -554,6 +580,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           startedAt: p.startedAt ?? current.startedAt,
           samples: Array.isArray(p.samples) ? p.samples : current.samples,
           metrics: p.metrics ?? current.metrics,
+          cumulativeOffsets: p.cumulativeOffsets ?? current.cumulativeOffsets,
+          lastDeviceTotals: p.lastDeviceTotals ?? current.lastDeviceTotals,
           lastSavedSummary: p.lastSavedSummary !== undefined ? p.lastSavedSummary : current.lastSavedSummary,
         };
       },
